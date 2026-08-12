@@ -2,5 +2,8 @@
 
 namespace autochess::core
 {
-    int sanityCheckValue() noexcept;
+    int sanityCheckValue() noexcept
+    {
+        return 42;
+    }
 }
