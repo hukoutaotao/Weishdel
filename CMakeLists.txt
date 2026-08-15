@@ -33,6 +33,9 @@ add_library(
     STATIC
     src/core/Core.cpp
     src/core/Core.hpp
+    src/core/config/ConfigError.hpp
+    src/core/map/MapTypes.hpp
+    src/core/model/Definitions.hpp
 )
 
 target_include_directories(
@@ -45,6 +48,7 @@ target_compile_options(
     AutoChessCore
     PRIVATE
     /W4
+    /utf-8
 )
 
 add_executable(
@@ -65,6 +69,7 @@ target_compile_options(
     AutoChessGame
     PRIVATE
     /W4
+    /utf-8
 )
 
 add_custom_command(
@@ -101,4 +106,5 @@ target_compile_options(
     AutoChessTests
     PRIVATE
     /W4
+    /utf-8
 )
