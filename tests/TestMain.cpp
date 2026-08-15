@@ -1,5 +1,6 @@
 #include "core/Core.hpp"
 #include "core/config/ConfigError.hpp"
+#include "core/config/DefinitionConfigLoader.hpp"
 #include "core/config/GameConfigLoader.hpp"
 #include "core/config/ConfigParser.hpp"
 #include "core/map/MapTypes.hpp"
@@ -9,9 +10,11 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace
 {
+    // 此函数验证核心数据类型可以被构造并保存基础值。
     bool runCoreTypesSmokeTest()
     {
         autochess::core::GameConfig config;
@@ -54,6 +57,7 @@ namespace
             && error.line == 2;
     }
 
+    // 此测试运行器统一输出测试结果并累计失败数量。
     class TestRunner
     {
     public:
@@ -78,6 +82,21 @@ namespace
         int failureCount_ = 0;
     };
 
+    // 此函数检查配置错误是否包含预期类别、路径、行号和中文消息。
+    bool hasExpectedConfigError(
+        const autochess::core::ConfigError& error,
+        const std::filesystem::path& path,
+        const autochess::core::ConfigErrorCategory expectedCategory,
+        const std::size_t expectedLine)
+    {
+        return error.category == expectedCategory
+            && error.sourcePath == path
+            && error.line == expectedLine
+            && !error.message.empty()
+            && !autochess::core::formatConfigError(error).empty();
+    }
+
+    // 此函数验证通用解析器按预期拒绝指定文件。
     bool parseMustFail(
         const std::filesystem::path& path,
         const autochess::core::ConfigErrorCategory expectedCategory,
@@ -89,11 +108,8 @@ namespace
             path, document, error);
 
         return !parsed
-            && error.category == expectedCategory
-            && error.sourcePath == path
-            && error.line == expectedLine
-            && !error.message.empty()
-            && !autochess::core::formatConfigError(error).empty();
+            && hasExpectedConfigError(
+                error, path, expectedCategory, expectedLine);
     }
 
     // 验证游戏配置加载失败时返回预期错误并保持输出对象不变。
@@ -113,13 +129,78 @@ namespace
         return !loaded
             && config.maxRounds == 99
             && config.randomSeed == 77
-            && error.category == expectedCategory
-            && error.sourcePath == path
-            && error.line == expectedLine
-            && !error.message.empty()
-            && !autochess::core::formatConfigError(error).empty();
+            && hasExpectedConfigError(
+                error, path, expectedCategory, expectedLine);
     }
 
+    // 此函数验证技能加载失败时保留调用方原有集合。
+    bool loadSkillsMustFail(
+        const std::filesystem::path& path,
+        const autochess::core::ConfigErrorCategory expectedCategory,
+        const std::size_t expectedLine)
+    {
+        std::vector<autochess::core::SkillDefinition> skills(1);
+        skills.front().id = "sentinel_skill";
+
+        autochess::core::ConfigError error;
+        const bool loaded = autochess::core::DefinitionConfigLoader::loadSkills(
+            path, skills, error);
+
+        return !loaded
+            && skills.size() == 1
+            && skills.front().id == "sentinel_skill"
+            && hasExpectedConfigError(
+                error, path, expectedCategory, expectedLine);
+    }
+
+    // 此函数验证单位加载失败时保留调用方原有集合。
+    bool loadUnitsMustFail(
+        const std::filesystem::path& path,
+        const std::vector<autochess::core::SkillDefinition>& skills,
+        const autochess::core::ConfigErrorCategory expectedCategory,
+        const std::size_t expectedLine)
+    {
+        std::vector<autochess::core::UnitDefinition> units(1);
+        units.front().id = "sentinel_unit";
+
+        autochess::core::ConfigError error;
+        const bool loaded = autochess::core::DefinitionConfigLoader::loadUnits(
+            path, skills, units, error);
+
+        return !loaded
+            && units.size() == 1
+            && units.front().id == "sentinel_unit"
+            && hasExpectedConfigError(
+                error, path, expectedCategory, expectedLine);
+    }
+
+    // 此函数验证分队加载失败时同时保留两个调用方输出集合。
+    bool loadFactionsMustFail(
+        const std::filesystem::path& path,
+        const autochess::core::GameConfig& gameConfig,
+        const std::vector<autochess::core::UnitDefinition>& units,
+        const autochess::core::ConfigErrorCategory expectedCategory,
+        const std::size_t expectedLine)
+    {
+        std::vector<autochess::core::FactionDefinition> factions(1);
+        factions.front().id = "sentinel_faction";
+        std::vector<autochess::core::FactionModifierDefinition> modifiers(1);
+        modifiers.front().id = "sentinel_modifier";
+
+        autochess::core::ConfigError error;
+        const bool loaded = autochess::core::DefinitionConfigLoader::loadFactions(
+            path, gameConfig, units, factions, modifiers, error);
+
+        return !loaded
+            && factions.size() == 1
+            && factions.front().id == "sentinel_faction"
+            && modifiers.size() == 1
+            && modifiers.front().id == "sentinel_modifier"
+            && hasExpectedConfigError(
+                error, path, expectedCategory, expectedLine);
+    }
+
+    // 此函数运行通用分段键值解析器的合法与非法输入测试。
     int runParserTests()
     {
         const std::filesystem::path dataDirectory =
@@ -263,8 +344,152 @@ namespace
 
         return runner.failureCount();
     }
+
+    // 此函数运行技能、单位和分队加载器的完整依赖链测试。
+    int runDefinitionConfigLoaderTests()
+    {
+        const std::filesystem::path dataDirectory = AUTOCHESS_DATA_DIR;
+        const std::filesystem::path testDataDirectory =
+            AUTOCHESS_TEST_DATA_DIR;
+        TestRunner runner;
+
+        // 此代码段加载合法游戏配置供分队部署上限校验使用。
+        autochess::core::GameConfig gameConfig;
+        autochess::core::ConfigError error;
+        const bool gameLoaded = autochess::core::GameConfigLoader::load(
+            dataDirectory / "game.cfg", gameConfig, error);
+        runner.check(
+            gameLoaded,
+            "Definition loaders receive a valid GameConfig dependency");
+
+        // 此代码段按技能、单位、分队的固定顺序加载全部合法占位定义。
+        std::vector<autochess::core::SkillDefinition> skills;
+        std::vector<autochess::core::UnitDefinition> units;
+        std::vector<autochess::core::FactionDefinition> factions;
+        std::vector<autochess::core::FactionModifierDefinition> modifiers;
+        const bool skillsLoaded =
+            autochess::core::DefinitionConfigLoader::loadSkills(
+                dataDirectory / "skills.cfg", skills, error);
+        const bool unitsLoaded = skillsLoaded
+            && autochess::core::DefinitionConfigLoader::loadUnits(
+                dataDirectory / "units.cfg", skills, units, error);
+        const bool factionsLoaded = unitsLoaded && gameLoaded
+            && autochess::core::DefinitionConfigLoader::loadFactions(
+                dataDirectory / "factions.cfg",
+                gameConfig,
+                units,
+                factions,
+                modifiers,
+                error);
+
+        // 此代码段核对合法定义的数量、关键 ID、枚举和值。
+        const bool validDefinitions = factionsLoaded
+            && skills.size() == 1
+            && skills.front().id == "training_strike"
+            && skills.front().effectType
+                == autochess::core::SkillEffectType::Damage
+            && skills.front().levelValues[2] == 45.0
+            && units.size() == 1
+            && units.front().id == "training_guard"
+            && units.front().skillId == "training_strike"
+            && units.front().tags.size() == 2
+            && factions.size() == 1
+            && factions.front().id == "training_team"
+            && factions.front().maxDeployed == 4
+            && modifiers.size() == 1
+            && modifiers.front().factionId == "training_team"
+            && modifiers.front().unitId == "training_guard"
+            && modifiers.front().operation
+                == autochess::core::FactionOperation::Multiply;
+        runner.check(
+            validDefinitions,
+            "DefinitionConfigLoader loads valid skills, units, factions, and modifiers");
+
+        // 此代码段打印已通过校验的定义数量供人工复核。
+        if (factionsLoaded)
+        {
+            std::cout
+                << "[INFO] Definition summary: skills=" << skills.size()
+                << ", units=" << units.size()
+                << ", factions=" << factions.size()
+                << ", modifiers=" << modifiers.size()
+                << '\n';
+        }
+
+        // 此代码段覆盖技能枚举、条件组合和三级列表错误。
+        runner.check(
+            loadSkillsMustFail(
+                testDataDirectory / "skill_invalid_enum.cfg",
+                autochess::core::ConfigErrorCategory::TypeError,
+                4),
+            "Skill loader rejects an unknown effect type");
+        runner.check(
+            loadSkillsMustFail(
+                testDataDirectory / "skill_invalid_condition.cfg",
+                autochess::core::ConfigErrorCategory::RangeError,
+                10),
+            "Skill loader rejects an invalid damage-skill duration");
+        runner.check(
+            loadSkillsMustFail(
+                testDataDirectory / "skill_invalid_list.cfg",
+                autochess::core::ConfigErrorCategory::TypeError,
+                9),
+            "Skill loader requires exactly three level values");
+
+        // 此代码段覆盖单位必填字段、范围和技能引用错误。
+        runner.check(
+            loadUnitsMustFail(
+                testDataDirectory / "unit_missing_field.cfg",
+                skills,
+                autochess::core::ConfigErrorCategory::MissingField,
+                1),
+            "Unit loader rejects a missing required field");
+        runner.check(
+            loadUnitsMustFail(
+                testDataDirectory / "unit_invalid_range.cfg",
+                skills,
+                autochess::core::ConfigErrorCategory::RangeError,
+                7),
+            "Unit loader rejects magic resistance above 100");
+        runner.check(
+            loadUnitsMustFail(
+                testDataDirectory / "unit_missing_skill_reference.cfg",
+                skills,
+                autochess::core::ConfigErrorCategory::ReferenceError,
+                17),
+            "Unit loader rejects a missing skill reference");
+
+        // 此代码段覆盖分队部署上限以及分队和单位引用错误。
+        runner.check(
+            loadFactionsMustFail(
+                testDataDirectory / "faction_too_many_deployed.cfg",
+                gameConfig,
+                units,
+                autochess::core::ConfigErrorCategory::RangeError,
+                4),
+            "Faction loader rejects deployment above roster capacity");
+        runner.check(
+            loadFactionsMustFail(
+                testDataDirectory / "faction_missing_faction_reference.cfg",
+                gameConfig,
+                units,
+                autochess::core::ConfigErrorCategory::ReferenceError,
+                8),
+            "Faction loader rejects a missing faction reference");
+        runner.check(
+            loadFactionsMustFail(
+                testDataDirectory / "faction_missing_unit_reference.cfg",
+                gameConfig,
+                units,
+                autochess::core::ConfigErrorCategory::ReferenceError,
+                9),
+            "Faction loader rejects a missing unit reference");
+
+        return runner.failureCount();
+    }
 }
 
+// 此函数依次运行所有核心配置测试并把失败转换为非零退出码。
 int main()
 {
     constexpr int expectedValue = 42;
@@ -316,5 +541,15 @@ int main()
     }
 
     std::cout << "[PASS] GameConfigLoader test suite\n";
+
+    // 此代码段运行定义加载测试并在任一案例失败时终止程序。
+    const int definitionFailures = runDefinitionConfigLoaderTests();
+    assert(definitionFailures == 0);
+    if (definitionFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] DefinitionConfigLoader test suite\n";
     return 0;
 }

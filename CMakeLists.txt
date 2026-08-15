@@ -34,11 +34,15 @@ add_library(
     src/core/Core.cpp
     src/core/Core.hpp
     src/core/config/ConfigError.hpp
-    # 将游戏配置加载器编译进纯 C++ 核心静态库。
+    # 将定义加载器和通用字段读取工具编译进纯 C++ 核心静态库。
+    src/core/config/DefinitionConfigLoader.cpp
+    src/core/config/DefinitionConfigLoader.hpp
     src/core/config/GameConfigLoader.cpp
     src/core/config/GameConfigLoader.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
+    src/core/config/ConfigValueReader.cpp
+    src/core/config/ConfigValueReader.hpp
     src/core/map/MapTypes.hpp
     src/core/model/Definitions.hpp
 )
