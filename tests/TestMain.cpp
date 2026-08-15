@@ -1,5 +1,6 @@
 #include "core/Core.hpp"
 #include "core/config/ConfigError.hpp"
+#include "core/config/GameConfigLoader.hpp"
 #include "core/config/ConfigParser.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
@@ -95,6 +96,30 @@ namespace
             && !autochess::core::formatConfigError(error).empty();
     }
 
+    // 验证游戏配置加载失败时返回预期错误并保持输出对象不变。
+    bool loadGameMustFail(
+        const std::filesystem::path& path,
+        const autochess::core::ConfigErrorCategory expectedCategory,
+        const std::size_t expectedLine)
+    {
+        autochess::core::GameConfig config;
+        config.maxRounds = 99;
+        config.randomSeed = 77;
+
+        autochess::core::ConfigError error;
+        const bool loaded = autochess::core::GameConfigLoader::load(
+            path, config, error);
+
+        return !loaded
+            && config.maxRounds == 99
+            && config.randomSeed == 77
+            && error.category == expectedCategory
+            && error.sourcePath == path
+            && error.line == expectedLine
+            && !error.message.empty()
+            && !autochess::core::formatConfigError(error).empty();
+    }
+
     int runParserTests()
     {
         const std::filesystem::path dataDirectory =
@@ -158,6 +183,86 @@ namespace
 
         return runner.failureCount();
     }
+
+    // 覆盖合法游戏配置以及必填、类型、范围和未知字段校验。
+    int runGameConfigLoaderTests()
+    {
+        const std::filesystem::path dataDirectory = AUTOCHESS_DATA_DIR;
+        const std::filesystem::path testDataDirectory =
+            AUTOCHESS_TEST_DATA_DIR;
+        TestRunner runner;
+
+        // 加载正式配置并核对全部字段与冻结初始值一致。
+        autochess::core::GameConfig config;
+        autochess::core::ConfigError error;
+        const std::filesystem::path validPath = dataDirectory / "game.cfg";
+        const bool loaded = autochess::core::GameConfigLoader::load(
+            validPath, config, error);
+        const bool validValues = loaded
+            && config.maxRounds == 3
+            && config.preparationSeconds == 45
+            && config.combatTimeoutSeconds == 60
+            && config.startingGold == 10
+            && config.roundIncome == 5
+            && config.loserBonus == 2
+            && config.shopSlots == 6
+            && config.shopRefreshCost == 2
+            && config.rosterCapacity == 8
+            && config.sellRatio == 0.75
+            && config.mergeRefundRatio == 0.40
+            && config.reviveRatio == 0.50
+            && config.maxUnitLevel == 3
+            && config.randomSeed == 20260814;
+        runner.check(
+            validValues,
+            "GameConfigLoader loads all fields from valid game.cfg");
+
+        // 打印已通过校验的关键参数摘要供人工复核。
+        if (loaded)
+        {
+            std::cout
+                << "[INFO] GameConfig summary: rounds=" << config.maxRounds
+                << ", preparation=" << config.preparationSeconds
+                << "s, combat=" << config.combatTimeoutSeconds
+                << "s, shop_slots=" << config.shopSlots
+                << ", seed=" << config.randomSeed
+                << '\n';
+        }
+
+        // 逐一验证缺字段、类型错误、范围错误和未知字段都会被准确拒绝。
+        runner.check(
+            loadGameMustFail(
+                testDataDirectory / "game_missing_field.cfg",
+                autochess::core::ConfigErrorCategory::MissingField,
+                1),
+            "GameConfigLoader rejects a missing required field");
+        runner.check(
+            loadGameMustFail(
+                testDataDirectory / "game_invalid_integer.cfg",
+                autochess::core::ConfigErrorCategory::TypeError,
+                2),
+            "GameConfigLoader rejects an invalid integer");
+        runner.check(
+            loadGameMustFail(
+                testDataDirectory / "game_invalid_ratio.cfg",
+                autochess::core::ConfigErrorCategory::RangeError,
+                11),
+            "GameConfigLoader rejects an out-of-range ratio");
+        runner.check(
+            loadGameMustFail(
+                testDataDirectory / "game_unknown_field.cfg",
+                autochess::core::ConfigErrorCategory::UnknownField,
+                16),
+            "GameConfigLoader rejects an unknown field");
+        runner.check(
+            loadGameMustFail(
+                testDataDirectory / "game_seed_overflow.cfg",
+                autochess::core::ConfigErrorCategory::RangeError,
+                15),
+            "GameConfigLoader rejects an overflowing random seed");
+
+        return runner.failureCount();
+    }
 }
 
 int main()
@@ -201,5 +306,15 @@ int main()
     }
 
     std::cout << "[PASS] ConfigParser test suite\n";
+
+    // 运行游戏配置加载测试并把任何失败转换为非零退出码。
+    const int gameConfigFailures = runGameConfigLoaderTests();
+    assert(gameConfigFailures == 0);
+    if (gameConfigFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] GameConfigLoader test suite\n";
     return 0;
 }

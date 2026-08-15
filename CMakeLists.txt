@@ -34,6 +34,9 @@ add_library(
     src/core/Core.cpp
     src/core/Core.hpp
     src/core/config/ConfigError.hpp
+    # 将游戏配置加载器编译进纯 C++ 核心静态库。
+    src/core/config/GameConfigLoader.cpp
+    src/core/config/GameConfigLoader.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
     src/core/map/MapTypes.hpp
@@ -111,8 +114,10 @@ target_compile_options(
     /utf-8
 )
 
+# 向测试程序提供正式数据与非法测试样本的稳定源目录。
 target_compile_definitions(
     AutoChessTests
     PRIVATE
+    AUTOCHESS_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
     AUTOCHESS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
 )
