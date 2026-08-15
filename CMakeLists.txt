@@ -34,6 +34,8 @@ add_library(
     src/core/Core.cpp
     src/core/Core.hpp
     src/core/config/ConfigError.hpp
+    src/core/config/ConfigParser.cpp
+    src/core/config/ConfigParser.hpp
     src/core/map/MapTypes.hpp
     src/core/model/Definitions.hpp
 )
@@ -107,4 +109,10 @@ target_compile_options(
     PRIVATE
     /W4
     /utf-8
+)
+
+target_compile_definitions(
+    AutoChessTests
+    PRIVATE
+    AUTOCHESS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data"
 )
