@@ -20,6 +20,8 @@
 #include "core/model/Definitions.hpp"
 #include "core/model/PlayerStateService.hpp"
 #include "core/model/PlayerTypes.hpp"
+#include "core/skills/Skill.hpp"
+#include "core/units/Unit.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -28,6 +30,7 @@
 #include <limits>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -4228,6 +4231,111 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证抽象接口、五个具体单位角色和配置技能等级读取。
+    int runUnitSkillInterfaceTests()
+    {
+        static_assert(std::is_abstract_v<autochess::core::Unit>);
+        static_assert(std::is_abstract_v<autochess::core::ISkillUser>);
+        static_assert(std::is_abstract_v<autochess::core::ActiveSkillUnit>);
+        static_assert(std::is_abstract_v<autochess::core::Skill>);
+
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError error;
+
+        // 此代码块加载正式定义并按 ID 找到五个单位和奥术技能。
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            error);
+        const autochess::core::UnitDefinition* guardDefinition = nullptr;
+        const autochess::core::UnitDefinition* duelistDefinition = nullptr;
+        const autochess::core::UnitDefinition* rangerDefinition = nullptr;
+        const autochess::core::UnitDefinition* arcanistDefinition = nullptr;
+        const autochess::core::UnitDefinition* medicDefinition = nullptr;
+        for (const autochess::core::UnitDefinition& definition : bundle.units)
+        {
+            if (definition.id == "training_guard")
+            {
+                guardDefinition = &definition;
+            }
+            else if (definition.id == "duelist")
+            {
+                duelistDefinition = &definition;
+            }
+            else if (definition.id == "ranger")
+            {
+                rangerDefinition = &definition;
+            }
+            else if (definition.id == "arcanist")
+            {
+                arcanistDefinition = &definition;
+            }
+            else if (definition.id == "medic")
+            {
+                medicDefinition = &definition;
+            }
+        }
+
+        const autochess::core::SkillDefinition* arcaneSkillDefinition = nullptr;
+        for (const autochess::core::SkillDefinition& definition : bundle.skills)
+        {
+            if (definition.id == "arcane_burst")
+            {
+                arcaneSkillDefinition = &definition;
+                break;
+            }
+        }
+        const bool definitionsFound = loaded
+            && guardDefinition != nullptr
+            && duelistDefinition != nullptr
+            && rangerDefinition != nullptr
+            && arcanistDefinition != nullptr
+            && medicDefinition != nullptr
+            && arcaneSkillDefinition != nullptr;
+        runner.check(
+            definitionsFound,
+            "Unit and skill interfaces receive all formal definitions");
+        if (!definitionsFound)
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码块实例化五个具体单位并核对角色和配置驱动技能 ID。
+        const autochess::core::IronGuardUnit guard(*guardDefinition);
+        const autochess::core::DuelistUnit duelist(*duelistDefinition);
+        const autochess::core::RangerUnit ranger(*rangerDefinition);
+        const autochess::core::ArcanistUnit arcanist(*arcanistDefinition);
+        const autochess::core::MedicUnit medic(*medicDefinition);
+        runner.check(
+            guard.role() == autochess::core::UnitRole::Defender
+                && duelist.role() == autochess::core::UnitRole::MeleeDamage
+                && ranger.role()
+                    == autochess::core::UnitRole::RangedPhysical
+                && arcanist.role()
+                    == autochess::core::UnitRole::MultiTargetMagic
+                && medic.role() == autochess::core::UnitRole::Healer
+                && guard.skillId() == "training_strike"
+                && medic.skillId() == "field_mend",
+            "Five concrete units expose distinct roles and configured skills");
+
+        // 此代码块验证主动技能前置条件和安全的三级数值查询。
+        const autochess::core::ConfiguredSkill arcaneSkill(
+            *arcaneSkillDefinition);
+        const auto levelThreeValue = arcaneSkill.valueForLevel(3);
+        runner.check(
+            guard.canReleaseSkill(10, 10, false)
+                && !guard.canReleaseSkill(9, 10, false)
+                && !guard.canReleaseSkill(10, 10, true)
+                && levelThreeValue.has_value()
+                && levelThreeValue.value() == 42.0
+                && !arcaneSkill.valueForLevel(0).has_value()
+                && !arcaneSkill.valueForLevel(4).has_value(),
+            "Active skill interfaces validate mana and level boundaries");
+
+        return runner.failureCount();
+    }
+
     // 此函数运行第一张正式地图和全部路线非法输入测试。
     int runMapConfigLoaderTests()
     {
@@ -5342,6 +5450,16 @@ int main()
     }
 
     std::cout << "[PASS] Day 5 content configuration test suite\n";
+
+    // 此代码块运行单位继承和技能抽象接口测试并传播任一失败。
+    const int unitSkillInterfaceFailures = runUnitSkillInterfaceTests();
+    assert(unitSkillInterfaceFailures == 0);
+    if (unitSkillInterfaceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Unit and skill interface test suite\n";
 
     // 此代码段运行地图加载与路线校验测试并在任一案例失败时终止程序。
     const int mapFailures = runMapConfigLoaderTests();

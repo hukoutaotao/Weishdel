@@ -75,6 +75,11 @@ add_library(
     src/core/model/PlayerStateService.cpp
     src/core/model/PlayerStateService.hpp
     src/core/model/PlayerTypes.hpp
+    # 将第 5 天单位继承体系和技能抽象接口编译进核心静态库。
+    src/core/skills/Skill.cpp
+    src/core/skills/Skill.hpp
+    src/core/units/Unit.cpp
+    src/core/units/Unit.hpp
 )
 
 target_include_directories(
