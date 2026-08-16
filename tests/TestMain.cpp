@@ -1,6 +1,8 @@
 #include "core/Core.hpp"
+#include "core/combat/BattleSimulation.hpp"
 #include "core/combat/BattleSetupService.hpp"
 #include "core/combat/BattleTypes.hpp"
+#include "core/combat/CombatRules.hpp"
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/config/ConfigError.hpp"
 #include "core/config/DefinitionConfigLoader.hpp"
@@ -19,6 +21,7 @@
 #include "core/model/PlayerTypes.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <limits>
@@ -4473,6 +4476,172 @@ namespace
 
         return runner.failureCount();
     }
+
+    bool nearlyEqual(
+        const double left,
+        const double right,
+        const double tolerance = 1.0e-9)
+    {
+        return std::abs(left - right) <= tolerance;
+    }
+
+    int runCombatRulesTests()
+    {
+        TestRunner runner;
+
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::attackInterval(0.0),
+                2.0),
+            "Combat rules calculate the zero-speed attack interval");
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::attackInterval(600.0),
+                200.0 / 700.0),
+            "Combat rules calculate the maximum-speed attack interval");
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::attackInterval(900.0),
+                200.0 / 700.0),
+            "Combat rules clamp attack speed above 600");
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::physicalDamage(20.0, 7.0),
+                13.0),
+            "Combat rules subtract physical defense");
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::physicalDamage(20.0, 100.0),
+                5.0),
+            "Combat rules enforce five minimum physical damage");
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::magicDamage(20.0, 0.0),
+                20.0)
+                && nearlyEqual(
+                    autochess::core::CombatRules::magicDamage(20.0, 100.0),
+                    0.0),
+            "Combat rules apply the magic-resistance boundaries");
+        runner.check(
+            nearlyEqual(
+                autochess::core::CombatRules::distance(
+                    {1.0, 1.0},
+                    {4.0, 5.0}),
+                5.0),
+            "Combat rules use Euclidean distance");
+
+        return runner.failureCount();
+    }
+
+    int runBattleMovementTests()
+    {
+        TestRunner runner;
+
+        autochess::core::MapDefinition map;
+        map.id = "movement_map";
+        map.width = 7;
+        map.height = 4;
+        map.gridRows = {
+            "#######",
+            "#.....#",
+            "#.....#",
+            "#######"};
+
+        auto makeUnit = []()
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = 1;
+            unit.ownedUnitId = 10;
+            unit.identity = {"movement_unit", 1};
+            unit.side = autochess::core::MapSide::A;
+            unit.position = {1.5, 1.5};
+            unit.routePoints = {
+                {1, 1}, {2, 1}, {3, 1}, {4, 1}, {5, 1}};
+            unit.nextRoutePointIndex = 1;
+            unit.stats.maxHealth = 100.0;
+            unit.health = 100.0;
+            unit.stats.moveSpeed = 30.0;
+            unit.stats.guardDamage = 5;
+            return unit;
+        };
+
+        {
+            auto unit = makeUnit();
+            autochess::core::BattleSimulation simulation({unit}, map, 10);
+            const bool stepped = simulation.step();
+            const auto& moved = simulation.units().front();
+            runner.check(
+                stepped
+                    && simulation.currentFrame() == 1
+                    && nearlyEqual(moved.position.x, 2.0)
+                    && nearlyEqual(moved.position.y, 1.5)
+                    && moved.nextRoutePointIndex == 1,
+                "Battle movement advances by speed divided by sixty");
+        }
+
+        {
+            auto unit = makeUnit();
+            unit.stats.moveSpeed = 150.0;
+            autochess::core::BattleSimulation simulation({unit}, map, 10);
+            simulation.step();
+            const auto& moved = simulation.units().front();
+            runner.check(
+                nearlyEqual(moved.position.x, 4.0)
+                    && nearlyEqual(moved.position.y, 1.5)
+                    && moved.nextRoutePointIndex == 3,
+                "Battle movement consumes distance across multiple waypoints");
+        }
+
+        {
+            auto unit = makeUnit();
+            unit.position = {3.5, 2.5};
+            unit.stats.moveSpeed = 60.0;
+            autochess::core::BattleSimulation simulation({unit}, map, 10);
+            simulation.step();
+            const auto& recovered = simulation.units().front();
+            runner.check(
+                recovered.nextRoutePointIndex == 3
+                    && nearlyEqual(recovered.position.x, 3.5)
+                    && nearlyEqual(recovered.position.y, 1.5),
+                "Battle movement recovers to the nearest unvisited waypoint");
+        }
+
+        {
+            auto unit = makeUnit();
+            unit.stats.moveSpeed = 240.0;
+            autochess::core::BattleSimulation simulation({unit}, map, 10);
+            simulation.step();
+            const auto& reached = simulation.units().front();
+            runner.check(
+                simulation.isFinished()
+                    && reached.state
+                        == autochess::core::BattleUnitState::ReachedGuard
+                    && nearlyEqual(reached.position.x, 5.5)
+                    && simulation.summary().guardDamageToB == 5,
+                "Battle movement stops exactly at the guard endpoint");
+        }
+
+        {
+            auto blockedMap = map;
+            blockedMap.gridRows[1] = "#.#...#";
+            auto unit = makeUnit();
+            unit.stats.moveSpeed = 60.0;
+            autochess::core::BattleSimulation simulation(
+                {unit},
+                blockedMap,
+                10);
+            simulation.step();
+            const auto& blocked = simulation.units().front();
+            runner.check(
+                blocked.position
+                    == autochess::core::BattlePosition{1.5, 1.5}
+                    && blocked.state
+                        == autochess::core::BattleUnitState::Alive,
+                "Battle movement does not enter an obstacle cell");
+        }
+
+        return runner.failureCount();
+    }
 }
 
 // 此函数依次运行所有核心配置测试并把失败转换为非零退出码。
@@ -4616,6 +4785,24 @@ int main()
     }
 
     std::cout << "[PASS] Battle setup service test suite\n";
+
+    const int combatRulesFailures = runCombatRulesTests();
+    assert(combatRulesFailures == 0);
+    if (combatRulesFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Combat rules test suite\n";
+
+    const int battleMovementFailures = runBattleMovementTests();
+    assert(battleMovementFailures == 0);
+    if (battleMovementFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle movement test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);

@@ -50,7 +50,11 @@ add_library(
     src/core/config/ConfigValueReader.hpp
     src/core/combat/BattleSetupService.cpp
     src/core/combat/BattleSetupService.hpp
+    src/core/combat/BattleSimulation.cpp
+    src/core/combat/BattleSimulation.hpp
     src/core/combat/BattleTypes.hpp
+    src/core/combat/CombatRules.cpp
+    src/core/combat/CombatRules.hpp
     src/core/economy/EconomyTypes.hpp
     src/core/economy/DeploymentService.cpp
     src/core/economy/DeploymentService.hpp
