@@ -34,6 +34,7 @@ namespace autochess::core
         MaxLevelReached,
         UnitNotDead,
         UnitAlreadyActive,
+        UnitAlreadyDead,
         InconsistentState
     };
 

@@ -56,6 +56,9 @@ add_library(
     src/core/economy/MergeService.hpp
     src/core/economy/PriceRules.cpp
     src/core/economy/PriceRules.hpp
+    # 将出售、死亡转移和复活服务编译进核心静态库。
+    src/core/economy/RosterService.cpp
+    src/core/economy/RosterService.hpp
     src/core/economy/ShopService.cpp
     src/core/economy/ShopService.hpp
     src/core/map/MapTypes.hpp

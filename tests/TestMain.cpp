@@ -9,6 +9,7 @@
 #include "core/economy/EconomyTypes.hpp"
 #include "core/economy/MergeService.hpp"
 #include "core/economy/PriceRules.hpp"
+#include "core/economy/RosterService.hpp"
 #include "core/economy/ShopService.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
@@ -2323,6 +2324,632 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证活动单位出售、死亡转移和死亡单位复活的完整规则。
+    int runRosterServiceTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(
+            loaded,
+            "RosterService loads the formal configuration bundle");
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        const autochess::core::FactionDefinition* trainingFaction = nullptr;
+        const autochess::core::UnitDefinition* trainingUnit = nullptr;
+        for (const autochess::core::FactionDefinition& faction :
+             bundle.factions)
+        {
+            if (faction.id == "training_team")
+            {
+                trainingFaction = &faction;
+                break;
+            }
+        }
+        for (const autochess::core::UnitDefinition& unit : bundle.units)
+        {
+            if (unit.id == "training_guard")
+            {
+                trainingUnit = &unit;
+                break;
+            }
+        }
+
+        runner.check(
+            trainingFaction != nullptr && trainingUnit != nullptr,
+            "RosterService finds the training faction and unit");
+        if (trainingFaction == nullptr || trainingUnit == nullptr)
+        {
+            return runner.failureCount();
+        }
+
+        const auto makeActivePlayer = [&](const int level, const int gold)
+        {
+            auto player = autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                bundle.gameConfig,
+                *trainingFaction);
+            player.gold = gold;
+            player.activeUnits.push_back(
+                autochess::core::OwnedUnit{
+                    1,
+                    autochess::core::UnitIdentity{
+                        trainingUnit->id, level},
+                    autochess::core::MapSide::A});
+            player.reserveSlots[0] = 1;
+            return player;
+        };
+
+        const auto makeDeadPlayer = [&](const int level, const int gold)
+        {
+            auto player = autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                bundle.gameConfig,
+                *trainingFaction);
+            player.gold = gold;
+            player.deadUnits.push_back(
+                autochess::core::OwnedUnit{
+                    1,
+                    autochess::core::UnitIdentity{
+                        trainingUnit->id, level},
+                    autochess::core::MapSide::A});
+            return player;
+        };
+
+        const auto expectUnchanged = [&runner](
+            const autochess::core::CommandResult& result,
+            const autochess::core::CommandErrorCode expectedCode,
+            const autochess::core::PlayerState& actual,
+            const autochess::core::PlayerState& before,
+            const std::string& testName)
+        {
+            runner.check(
+                !result.success
+                    && result.errorCode == expectedCode
+                    && !result.message.empty()
+                    && playersAreEqual(actual, before),
+                testName);
+        };
+
+        std::string validationError;
+
+        // 此代码段验证备用区一级单位出售后被彻底移除并返还两个金币。
+        auto reserveSellPlayer = makeActivePlayer(1, 10);
+        const auto reserveSellResult = autochess::core::RosterService::sell(
+            reserveSellPlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        runner.check(
+            reserveSellResult.success
+                && reserveSellResult.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && reserveSellResult.message.find("2") != std::string::npos
+                && reserveSellPlayer.gold == 12
+                && reserveSellPlayer.activeUnits.empty()
+                && reserveSellPlayer.deadUnits.empty()
+                && !reserveSellPlayer.reserveSlots[0].has_value()
+                && autochess::core::PlayerStateService::validate(
+                    reserveSellPlayer, validationError),
+            "RosterService sells a reserve level-one unit for two gold");
+
+        // 此代码段验证三级部署单位仍按一级价格出售并释放部署格。
+        auto deployedSellPlayer = makeActivePlayer(3, 10);
+        deployedSellPlayer.reserveSlots[0].reset();
+        deployedSellPlayer.deployments.emplace(
+            autochess::core::GridPosition{1, 2}, 1);
+        const auto deployedSellResult = autochess::core::RosterService::sell(
+            deployedSellPlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        runner.check(
+            deployedSellResult.success
+                && deployedSellPlayer.gold == 12
+                && deployedSellPlayer.activeUnits.empty()
+                && deployedSellPlayer.deployments.empty()
+                && autochess::core::PlayerStateService::validate(
+                    deployedSellPlayer, validationError),
+            "RosterService sells a deployed level-three unit at level-one value");
+
+        // 此代码段验证零出售比例允许成功出售且不增加金币。
+        auto freeSellConfig = bundle.gameConfig;
+        freeSellConfig.sellRatio = 0.0;
+        auto freeSellPlayer = makeActivePlayer(2, 10);
+        const auto freeSellResult = autochess::core::RosterService::sell(
+            freeSellPlayer,
+            1,
+            freeSellConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        runner.check(
+            freeSellResult.success
+                && freeSellPlayer.gold == 10
+                && freeSellPlayer.activeUnits.empty()
+                && autochess::core::PlayerStateService::validate(
+                    freeSellPlayer, validationError),
+            "RosterService permits a zero-ratio sale");
+
+        // 此代码段验证死亡单位不能通过出售入口移除。
+        auto deadSellPlayer = makeDeadPlayer(1, 10);
+        const auto deadSellBefore = deadSellPlayer;
+        const auto deadSellResult = autochess::core::RosterService::sell(
+            deadSellPlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        expectUnchanged(
+            deadSellResult,
+            autochess::core::CommandErrorCode::UnitAlreadyDead,
+            deadSellPlayer,
+            deadSellBefore,
+            "RosterService rejects selling a dead unit");
+
+        // 此代码段验证不存在的持久 ID 不能出售。
+        auto missingSellPlayer = makeActivePlayer(1, 10);
+        const auto missingSellBefore = missingSellPlayer;
+        const auto missingSellResult = autochess::core::RosterService::sell(
+            missingSellPlayer,
+            99,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        expectUnchanged(
+            missingSellResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            missingSellPlayer,
+            missingSellBefore,
+            "RosterService rejects selling a missing unit");
+
+        // 此代码段验证缺少单位定义时出售保持原子失败。
+        auto missingSellDefinitionPlayer = makeActivePlayer(1, 10);
+        const auto missingSellDefinitionBefore =
+            missingSellDefinitionPlayer;
+        const std::vector<autochess::core::UnitDefinition> noUnits;
+        const auto missingSellDefinitionResult =
+            autochess::core::RosterService::sell(
+                missingSellDefinitionPlayer,
+                1,
+                bundle.gameConfig,
+                noUnits,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            missingSellDefinitionResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            missingSellDefinitionPlayer,
+            missingSellDefinitionBefore,
+            "RosterService rejects selling a unit without a definition");
+
+        // 此代码段验证出售价格分队必须与玩家分队一致。
+        auto otherFaction = *trainingFaction;
+        otherFaction.id = "other_team";
+        auto mismatchedSellPlayer = makeActivePlayer(1, 10);
+        const auto mismatchedSellBefore = mismatchedSellPlayer;
+        const auto mismatchedSellResult = autochess::core::RosterService::sell(
+            mismatchedSellPlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            otherFaction,
+            bundle.factionModifiers);
+        expectUnchanged(
+            mismatchedSellResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            mismatchedSellPlayer,
+            mismatchedSellBefore,
+            "RosterService rejects a mismatched sale faction");
+
+        // 此代码段验证非法出售比例不会移除单位。
+        auto invalidSellConfig = bundle.gameConfig;
+        invalidSellConfig.sellRatio = 1.5;
+        auto invalidSellRatioPlayer = makeActivePlayer(1, 10);
+        const auto invalidSellRatioBefore = invalidSellRatioPlayer;
+        const auto invalidSellRatioResult =
+            autochess::core::RosterService::sell(
+                invalidSellRatioPlayer,
+                1,
+                invalidSellConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            invalidSellRatioResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            invalidSellRatioPlayer,
+            invalidSellRatioBefore,
+            "RosterService rejects an invalid sale ratio");
+
+        // 此代码段验证出售返还导致金币溢出时拒绝提交。
+        auto overflowSellPlayer = makeActivePlayer(
+            1, std::numeric_limits<int>::max());
+        const auto overflowSellBefore = overflowSellPlayer;
+        const auto overflowSellResult = autochess::core::RosterService::sell(
+            overflowSellPlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        expectUnchanged(
+            overflowSellResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            overflowSellPlayer,
+            overflowSellBefore,
+            "RosterService rejects sale gold overflow atomically");
+
+        // 此代码段验证出售入口先拒绝违反位置不变量的玩家状态。
+        auto invalidSellStatePlayer = makeActivePlayer(1, 10);
+        invalidSellStatePlayer.reserveSlots[1] = 1;
+        const auto invalidSellStateBefore = invalidSellStatePlayer;
+        const auto invalidSellStateResult =
+            autochess::core::RosterService::sell(
+                invalidSellStatePlayer,
+                1,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            invalidSellStateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            invalidSellStatePlayer,
+            invalidSellStateBefore,
+            "RosterService rejects an invalid state before selling");
+
+        // 此代码段验证备用单位死亡后完整身份进入死亡列表且金币不变。
+        auto reserveDeathPlayer = makeActivePlayer(2, 10);
+        const int guardBeforeDeath = reserveDeathPlayer.guardValue;
+        const auto reserveDeathResult =
+            autochess::core::RosterService::markDead(
+                reserveDeathPlayer, 1);
+        runner.check(
+            reserveDeathResult.success
+                && reserveDeathResult.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !reserveDeathResult.message.empty()
+                && reserveDeathPlayer.gold == 10
+                && reserveDeathPlayer.guardValue == guardBeforeDeath
+                && reserveDeathPlayer.activeUnits.empty()
+                && reserveDeathPlayer.deadUnits.size() == 1
+                && reserveDeathPlayer.deadUnits.front().id == 1
+                && reserveDeathPlayer.deadUnits.front().identity.level == 2
+                && !reserveDeathPlayer.reserveSlots[0].has_value()
+                && autochess::core::PlayerStateService::validate(
+                    reserveDeathPlayer, validationError),
+            "RosterService moves a reserve unit to the dead list");
+
+        // 此代码段验证部署单位死亡后对应部署格被释放。
+        auto deployedDeathPlayer = makeActivePlayer(1, 10);
+        deployedDeathPlayer.reserveSlots[0].reset();
+        deployedDeathPlayer.deployments.emplace(
+            autochess::core::GridPosition{1, 2}, 1);
+        const auto deployedDeathResult =
+            autochess::core::RosterService::markDead(
+                deployedDeathPlayer, 1);
+        runner.check(
+            deployedDeathResult.success
+                && deployedDeathPlayer.activeUnits.empty()
+                && deployedDeathPlayer.deadUnits.size() == 1
+                && deployedDeathPlayer.deployments.empty()
+                && autochess::core::PlayerStateService::validate(
+                    deployedDeathPlayer, validationError),
+            "RosterService releases a deployment when a unit dies");
+
+        // 此代码段验证同一单位不能重复进入死亡列表。
+        const auto repeatedDeathBefore = reserveDeathPlayer;
+        const auto repeatedDeathResult =
+            autochess::core::RosterService::markDead(
+                reserveDeathPlayer, 1);
+        expectUnchanged(
+            repeatedDeathResult,
+            autochess::core::CommandErrorCode::UnitAlreadyDead,
+            reserveDeathPlayer,
+            repeatedDeathBefore,
+            "RosterService rejects marking an already dead unit");
+
+        // 此代码段验证不存在的单位不能转入死亡列表。
+        auto missingDeathPlayer = makeActivePlayer(1, 10);
+        const auto missingDeathBefore = missingDeathPlayer;
+        const auto missingDeathResult =
+            autochess::core::RosterService::markDead(
+                missingDeathPlayer, 99);
+        expectUnchanged(
+            missingDeathResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            missingDeathPlayer,
+            missingDeathBefore,
+            "RosterService rejects marking a missing unit dead");
+
+        // 此代码段验证死亡入口不会修改无效的初始玩家状态。
+        auto invalidDeathStatePlayer = makeActivePlayer(1, 10);
+        invalidDeathStatePlayer.deployments.emplace(
+            autochess::core::GridPosition{1, 2}, 1);
+        const auto invalidDeathStateBefore = invalidDeathStatePlayer;
+        const auto invalidDeathStateResult =
+            autochess::core::RosterService::markDead(
+                invalidDeathStatePlayer, 1);
+        expectUnchanged(
+            invalidDeathStateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            invalidDeathStatePlayer,
+            invalidDeathStateBefore,
+            "RosterService rejects an invalid state before death transfer");
+
+        // 此代码段验证二级死亡单位以同一 ID 复活并扣除两个金币。
+        auto revivePlayer = makeDeadPlayer(2, 10);
+        const auto reviveResult = autochess::core::RosterService::revive(
+            revivePlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        runner.check(
+            reviveResult.success
+                && reviveResult.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && reviveResult.message.find("2") != std::string::npos
+                && revivePlayer.gold == 8
+                && revivePlayer.deadUnits.empty()
+                && revivePlayer.activeUnits.size() == 1
+                && revivePlayer.activeUnits.front().id == 1
+                && revivePlayer.activeUnits.front().identity.level == 2
+                && revivePlayer.reserveSlots[0].has_value()
+                && revivePlayer.reserveSlots[0].value() == 1
+                && revivePlayer.deployments.empty()
+                && autochess::core::PlayerStateService::validate(
+                    revivePlayer, validationError),
+            "RosterService revives a level-two unit with the same ID");
+
+        // 此代码段验证复活单位进入编号最小的空闲备用区槽位。
+        auto firstEmptyPlayer = makeDeadPlayer(3, 10);
+        firstEmptyPlayer.activeUnits.push_back(
+            autochess::core::OwnedUnit{
+                2,
+                autochess::core::UnitIdentity{trainingUnit->id, 1},
+                autochess::core::MapSide::A});
+        firstEmptyPlayer.reserveSlots[0] = 2;
+        const auto firstEmptyResult =
+            autochess::core::RosterService::revive(
+                firstEmptyPlayer,
+                1,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        runner.check(
+            firstEmptyResult.success
+                && firstEmptyPlayer.reserveSlots[1].has_value()
+                && firstEmptyPlayer.reserveSlots[1].value() == 1
+                && firstEmptyPlayer.activeUnits.size() == 2
+                && firstEmptyPlayer.gold == 8
+                && autochess::core::PlayerStateService::validate(
+                    firstEmptyPlayer, validationError),
+            "RosterService revives into the first empty reserve slot");
+
+        // 此代码段验证金币不足时死亡单位保持不变。
+        auto poorRevivePlayer = makeDeadPlayer(1, 1);
+        const auto poorReviveBefore = poorRevivePlayer;
+        const auto poorReviveResult = autochess::core::RosterService::revive(
+            poorRevivePlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        expectUnchanged(
+            poorReviveResult,
+            autochess::core::CommandErrorCode::InsufficientGold,
+            poorRevivePlayer,
+            poorReviveBefore,
+            "RosterService rejects revival with insufficient gold");
+
+        // 此代码段填满活动单位容量并验证死亡单位不能复活。
+        auto fullRevivePlayer = makeDeadPlayer(1, 10);
+        for (std::size_t slot = 0;
+             slot < fullRevivePlayer.reserveSlots.size();
+             ++slot)
+        {
+            const auto id = static_cast<autochess::core::OwnedUnitId>(
+                slot + 2);
+            fullRevivePlayer.activeUnits.push_back(
+                autochess::core::OwnedUnit{
+                    id,
+                    autochess::core::UnitIdentity{trainingUnit->id, 1},
+                    autochess::core::MapSide::A});
+            fullRevivePlayer.reserveSlots[slot] = id;
+        }
+        const auto fullReviveBefore = fullRevivePlayer;
+        const auto fullReviveResult = autochess::core::RosterService::revive(
+            fullRevivePlayer,
+            1,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        expectUnchanged(
+            fullReviveResult,
+            autochess::core::CommandErrorCode::RosterFull,
+            fullRevivePlayer,
+            fullReviveBefore,
+            "RosterService enforces the active roster limit on revival");
+
+        // 此代码段验证活动单位不能通过复活入口重复加入活动列表。
+        auto activeRevivePlayer = makeActivePlayer(1, 10);
+        const auto activeReviveBefore = activeRevivePlayer;
+        const auto activeReviveResult =
+            autochess::core::RosterService::revive(
+                activeRevivePlayer,
+                1,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            activeReviveResult,
+            autochess::core::CommandErrorCode::UnitAlreadyActive,
+            activeRevivePlayer,
+            activeReviveBefore,
+            "RosterService rejects reviving an active unit");
+
+        // 此代码段验证不存在的持久 ID 不能复活。
+        auto missingRevivePlayer = makeDeadPlayer(1, 10);
+        const auto missingReviveBefore = missingRevivePlayer;
+        const auto missingReviveResult =
+            autochess::core::RosterService::revive(
+                missingRevivePlayer,
+                99,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            missingReviveResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            missingRevivePlayer,
+            missingReviveBefore,
+            "RosterService rejects reviving a missing unit");
+
+        // 此代码段验证缺少单位定义时复活保持原子失败。
+        auto missingReviveDefinitionPlayer = makeDeadPlayer(1, 10);
+        const auto missingReviveDefinitionBefore =
+            missingReviveDefinitionPlayer;
+        const auto missingReviveDefinitionResult =
+            autochess::core::RosterService::revive(
+                missingReviveDefinitionPlayer,
+                1,
+                bundle.gameConfig,
+                noUnits,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            missingReviveDefinitionResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            missingReviveDefinitionPlayer,
+            missingReviveDefinitionBefore,
+            "RosterService rejects reviving a unit without a definition");
+
+        // 此代码段验证复活价格分队必须与玩家分队一致。
+        auto mismatchedRevivePlayer = makeDeadPlayer(1, 10);
+        const auto mismatchedReviveBefore = mismatchedRevivePlayer;
+        const auto mismatchedReviveResult =
+            autochess::core::RosterService::revive(
+                mismatchedRevivePlayer,
+                1,
+                bundle.gameConfig,
+                bundle.units,
+                otherFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            mismatchedReviveResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            mismatchedRevivePlayer,
+            mismatchedReviveBefore,
+            "RosterService rejects a mismatched revival faction");
+
+        // 此代码段验证非法复活比例不会移动死亡单位。
+        auto invalidReviveConfig = bundle.gameConfig;
+        invalidReviveConfig.reviveRatio = -0.1;
+        auto invalidReviveRatioPlayer = makeDeadPlayer(1, 10);
+        const auto invalidReviveRatioBefore = invalidReviveRatioPlayer;
+        const auto invalidReviveRatioResult =
+            autochess::core::RosterService::revive(
+                invalidReviveRatioPlayer,
+                1,
+                invalidReviveConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            invalidReviveRatioResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            invalidReviveRatioPlayer,
+            invalidReviveRatioBefore,
+            "RosterService rejects an invalid revival ratio");
+
+        // 此代码段验证零复活比例允许免费复活。
+        auto freeReviveConfig = bundle.gameConfig;
+        freeReviveConfig.reviveRatio = 0.0;
+        auto freeRevivePlayer = makeDeadPlayer(1, 0);
+        const auto freeReviveResult = autochess::core::RosterService::revive(
+            freeRevivePlayer,
+            1,
+            freeReviveConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        runner.check(
+            freeReviveResult.success
+                && freeRevivePlayer.gold == 0
+                && freeRevivePlayer.deadUnits.empty()
+                && freeRevivePlayer.activeUnits.size() == 1
+                && autochess::core::PlayerStateService::validate(
+                    freeRevivePlayer, validationError),
+            "RosterService permits a zero-cost revival");
+
+        // 此代码段验证复活入口不会修改无效的初始玩家状态。
+        auto invalidReviveStatePlayer = makeDeadPlayer(1, 10);
+        invalidReviveStatePlayer.reserveSlots[0] = 1;
+        const auto invalidReviveStateBefore = invalidReviveStatePlayer;
+        const auto invalidReviveStateResult =
+            autochess::core::RosterService::revive(
+                invalidReviveStatePlayer,
+                1,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        expectUnchanged(
+            invalidReviveStateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            invalidReviveStatePlayer,
+            invalidReviveStateBefore,
+            "RosterService rejects an invalid state before revival");
+
+        // 此代码段串联死亡与复活，确认死亡释放容量且复活保留身份。
+        auto lifecyclePlayer = makeActivePlayer(3, 10);
+        const auto lifecycleDeathResult =
+            autochess::core::RosterService::markDead(
+                lifecyclePlayer, 1);
+        const auto lifecycleReviveResult =
+            autochess::core::RosterService::revive(
+                lifecyclePlayer,
+                1,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers);
+        runner.check(
+            lifecycleDeathResult.success
+                && lifecycleReviveResult.success
+                && lifecyclePlayer.activeUnits.size() == 1
+                && lifecyclePlayer.deadUnits.empty()
+                && lifecyclePlayer.activeUnits.front().id == 1
+                && lifecyclePlayer.activeUnits.front().identity.level == 3
+                && lifecyclePlayer.gold == 8
+                && autochess::core::PlayerStateService::validate(
+                    lifecyclePlayer, validationError),
+            "RosterService death and revival preserve persistent identity");
+
+        return runner.failureCount();
+    }
+
     // 此函数检查配置错误是否包含预期类别、路径、行号和中文消息。
     bool hasExpectedConfigError(
         const autochess::core::ConfigError& error,
@@ -3166,6 +3793,16 @@ int main()
     }
 
     std::cout << "[PASS] Merge service test suite\n";
+
+    // 此代码段运行出售、死亡转移和复活测试并传播失败退出码。
+    const int rosterServiceFailures = runRosterServiceTests();
+    assert(rosterServiceFailures == 0);
+    if (rosterServiceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Roster service test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);
