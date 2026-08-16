@@ -4071,6 +4071,163 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证第 5 天正式内容表已完整映射到冻结配置字段。
+    int runDay5ContentConfigTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError error;
+
+        // 此代码块加载正式配置并先验证五单位、五技能和三分队数量。
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            error);
+        runner.check(
+            loaded
+                && bundle.units.size() == 5
+                && bundle.skills.size() == 5
+                && bundle.factions.size() == 3,
+            "Day 5 content loads five units, five skills, and three factions");
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码块逐项核对五个技能的效果、目标和多目标数量。
+        bool guardSkillValid = false;
+        bool duelistSkillValid = false;
+        bool rangerSkillValid = false;
+        bool arcanistSkillValid = false;
+        bool medicSkillValid = false;
+        for (const autochess::core::SkillDefinition& skill : bundle.skills)
+        {
+            guardSkillValid = guardSkillValid
+                || (skill.id == "training_strike"
+                    && skill.effectType == autochess::core::SkillEffectType::Buff
+                    && skill.targetRule == autochess::core::SkillTargetRule::Self
+                    && skill.buffStat
+                        == autochess::core::BuffStat::PhysicalDefense);
+            duelistSkillValid = duelistSkillValid
+                || (skill.id == "duelist_slash"
+                    && skill.effectType == autochess::core::SkillEffectType::Damage
+                    && skill.damageType == autochess::core::DamageType::Physical
+                    && skill.targetCount == 1);
+            rangerSkillValid = rangerSkillValid
+                || (skill.id == "ranger_focus"
+                    && skill.effectType == autochess::core::SkillEffectType::Buff
+                    && skill.buffStat == autochess::core::BuffStat::AttackSpeed
+                    && skill.modifierMode
+                        == autochess::core::ModifierMode::Multiply);
+            arcanistSkillValid = arcanistSkillValid
+                || (skill.id == "arcane_burst"
+                    && skill.effectType == autochess::core::SkillEffectType::Damage
+                    && skill.damageType == autochess::core::DamageType::Magic
+                    && skill.targetCount == 3);
+            medicSkillValid = medicSkillValid
+                || (skill.id == "field_mend"
+                    && skill.effectType == autochess::core::SkillEffectType::Heal
+                    && skill.targetRule
+                        == autochess::core::SkillTargetRule::LowestHealthAlly
+                    && skill.allowSelf);
+        }
+        runner.check(
+            guardSkillValid
+                && duelistSkillValid
+                && rangerSkillValid
+                && arcanistSkillValid
+                && medicSkillValid,
+            "Day 5 skills cover single damage, multi damage, healing, and buffs");
+
+        // 此代码块核对单位角色、技能一对一引用和医疗普通行为。
+        bool guardUnitValid = false;
+        bool duelistUnitValid = false;
+        bool rangerUnitValid = false;
+        bool arcanistUnitValid = false;
+        bool medicUnitValid = false;
+        std::vector<std::string> referencedSkillIds;
+        for (const autochess::core::UnitDefinition& unit : bundle.units)
+        {
+            referencedSkillIds.push_back(unit.skillId);
+            guardUnitValid = guardUnitValid
+                || (unit.id == "training_guard"
+                    && unit.attackRange == 1.0
+                    && unit.skillId == "training_strike");
+            duelistUnitValid = duelistUnitValid
+                || (unit.id == "duelist"
+                    && unit.basicAction == autochess::core::BasicAction::Attack
+                    && unit.skillId == "duelist_slash");
+            rangerUnitValid = rangerUnitValid
+                || (unit.id == "ranger"
+                    && unit.attackRange > 3.0
+                    && unit.skillId == "ranger_focus");
+            arcanistUnitValid = arcanistUnitValid
+                || (unit.id == "arcanist"
+                    && unit.basicDamageType == autochess::core::DamageType::Magic
+                    && unit.skillId == "arcane_burst");
+            medicUnitValid = medicUnitValid
+                || (unit.id == "medic"
+                    && unit.basicAction == autochess::core::BasicAction::Heal
+                    && unit.skillId == "field_mend");
+        }
+
+        // 此代码块拒绝两个正式单位共享同一个技能 ID。
+        bool uniqueSkillReferences = true;
+        for (std::size_t left = 0; left < referencedSkillIds.size(); ++left)
+        {
+            for (std::size_t right = left + 1;
+                 right < referencedSkillIds.size();
+                 ++right)
+            {
+                uniqueSkillReferences = uniqueSkillReferences
+                    && referencedSkillIds[left] != referencedSkillIds[right];
+            }
+        }
+        runner.check(
+            guardUnitValid
+                && duelistUnitValid
+                && rangerUnitValid
+                && arcanistUnitValid
+                && medicUnitValid
+                && uniqueSkillReferences,
+            "Day 5 units cover the five required roles with independent skills");
+
+        // 此代码块确认三种分队方向和显式单位修正均存在。
+        bool defenseFactionValid = false;
+        bool assaultFactionValid = false;
+        bool routeFactionValid = false;
+        for (const autochess::core::FactionDefinition& faction : bundle.factions)
+        {
+            defenseFactionValid = defenseFactionValid
+                || (faction.id == "training_team"
+                    && faction.initialGuard == 100
+                    && faction.maxDeployed == 4);
+            assaultFactionValid = assaultFactionValid
+                || (faction.id == "assault_team"
+                    && faction.maxDeployed == 5
+                    && faction.priceMultiplier == 1.0);
+            routeFactionValid = routeFactionValid
+                || (faction.id == "route_team"
+                    && faction.maxDeployed == 5
+                    && faction.priceMultiplier == 0.9);
+        }
+        bool modifiersUseExplicitUnitIds = true;
+        for (const autochess::core::FactionModifierDefinition& modifier :
+             bundle.factionModifiers)
+        {
+            modifiersUseExplicitUnitIds = modifiersUseExplicitUnitIds
+                && modifier.unitId != "*";
+        }
+        runner.check(
+            defenseFactionValid
+                && assaultFactionValid
+                && routeFactionValid
+                && modifiersUseExplicitUnitIds,
+            "Day 5 factions represent defense, assault, and route economy roles");
+
+        return runner.failureCount();
+    }
+
     // 此函数运行第一张正式地图和全部路线非法输入测试。
     int runMapConfigLoaderTests()
     {
@@ -5175,6 +5332,16 @@ int main()
     }
 
     std::cout << "[PASS] DefinitionConfigLoader test suite\n";
+
+    // 此代码块运行第 5 天正式内容覆盖测试并传播任一失败。
+    const int day5ContentFailures = runDay5ContentConfigTests();
+    assert(day5ContentFailures == 0);
+    if (day5ContentFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Day 5 content configuration test suite\n";
 
     // 此代码段运行地图加载与路线校验测试并在任一案例失败时终止程序。
     const int mapFailures = runMapConfigLoaderTests();
