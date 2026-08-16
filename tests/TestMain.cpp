@@ -7,6 +7,7 @@
 #include "core/config/ConfigParser.hpp"
 #include "core/economy/EconomyTypes.hpp"
 #include "core/economy/PriceRules.hpp"
+#include "core/economy/ShopService.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
 #include "core/model/PlayerStateService.hpp"
@@ -15,6 +16,7 @@
 #include <cassert>
 #include <filesystem>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -181,6 +183,72 @@ namespace
     private:
         int failureCount_ = 0;
     };
+
+    bool shopsAreEqual(
+        const autochess::core::ShopState& left,
+        const autochess::core::ShopState& right)
+    {
+        if (left.offers.size() != right.offers.size())
+        {
+            return false;
+        }
+
+        for (std::size_t slot = 0; slot < left.offers.size(); ++slot)
+        {
+            if (left.offers[slot].has_value()
+                != right.offers[slot].has_value())
+            {
+                return false;
+            }
+
+            if (left.offers[slot].has_value()
+                && (left.offers[slot]->unitId
+                        != right.offers[slot]->unitId
+                    || left.offers[slot]->displayedPrice
+                        != right.offers[slot]->displayedPrice))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool ownedUnitListsAreEqual(
+        const std::vector<autochess::core::OwnedUnit>& left,
+        const std::vector<autochess::core::OwnedUnit>& right)
+    {
+        if (left.size() != right.size())
+        {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < left.size(); ++index)
+        {
+            if (left[index].id != right[index].id
+                || !(left[index].identity == right[index].identity)
+                || left[index].ownerSide != right[index].ownerSide)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool playersAreEqual(
+        const autochess::core::PlayerState& left,
+        const autochess::core::PlayerState& right)
+    {
+        return left.side == right.side
+            && left.factionId == right.factionId
+            && left.gold == right.gold
+            && left.guardValue == right.guardValue
+            && ownedUnitListsAreEqual(left.activeUnits, right.activeUnits)
+            && ownedUnitListsAreEqual(left.deadUnits, right.deadUnits)
+            && left.reserveSlots == right.reserveSlots
+            && left.deployments == right.deployments;
+    }
 
     int runPriceRulesTests()
     {
@@ -382,6 +450,652 @@ namespace
                 && unchangedModifiers[0].value
                     == invalidModifiers[0].value,
             "PriceRules failure does not modify its inputs");
+
+        return runner.failureCount();
+    }
+
+    int runShopServiceTests()
+    {
+        TestRunner runner;
+
+        autochess::core::GameConfig gameConfig;
+        gameConfig.startingGold = 10;
+        gameConfig.shopSlots = 6;
+        gameConfig.shopRefreshCost = 2;
+
+        autochess::core::FactionDefinition faction;
+        faction.id = "shop_team";
+        faction.name = "商店测试分队";
+        faction.initialGuard = 100;
+        faction.priceMultiplier = 1.0;
+
+        autochess::core::PlayerState player;
+        player.side = autochess::core::MapSide::A;
+        player.factionId = faction.id;
+        player.gold = gameConfig.startingGold;
+        player.guardValue = faction.initialGuard;
+
+        std::vector<autochess::core::UnitDefinition> units(3);
+        units[0].id = "cheap_unit";
+        units[0].price = 2;
+        units[1].id = "normal_unit";
+        units[1].price = 3;
+        units[2].id = "expensive_unit";
+        units[2].price = 5;
+        const std::vector<autochess::core::FactionModifierDefinition>
+            noModifiers;
+
+        autochess::core::ShopState firstShop;
+        firstShop.offers.emplace_back(
+            autochess::core::ShopOffer{"old_offer", 99});
+        autochess::core::ShopState secondShop;
+        std::mt19937 firstEngine(20260814u);
+        std::mt19937 secondEngine(20260814u);
+        const auto firstRebuild = autochess::core::ShopService::rebuild(
+            player,
+            firstShop,
+            gameConfig,
+            units,
+            faction,
+            noModifiers,
+            firstEngine);
+        const auto secondRebuild = autochess::core::ShopService::rebuild(
+            player,
+            secondShop,
+            gameConfig,
+            units,
+            faction,
+            noModifiers,
+            secondEngine);
+        runner.check(
+            firstRebuild.success
+                && secondRebuild.success
+                && firstRebuild.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !firstRebuild.message.empty()
+                && shopsAreEqual(firstShop, secondShop)
+                && firstEngine == secondEngine,
+            "ShopService rebuilds deterministically with the same seed");
+
+        bool allSlotsContainOffers = firstShop.offers.size()
+            == static_cast<std::size_t>(gameConfig.shopSlots);
+        bool everyDisplayedPriceIsCorrect = allSlotsContainOffers;
+        bool oldOfferWasReplaced = allSlotsContainOffers;
+        for (const auto& offer : firstShop.offers)
+        {
+            if (!offer.has_value())
+            {
+                allSlotsContainOffers = false;
+                everyDisplayedPriceIsCorrect = false;
+                oldOfferWasReplaced = false;
+                continue;
+            }
+
+            int expectedPrice = 0;
+            if (offer->unitId == "cheap_unit")
+            {
+                expectedPrice = 2;
+            }
+            else if (offer->unitId == "normal_unit")
+            {
+                expectedPrice = 3;
+            }
+            else if (offer->unitId == "expensive_unit")
+            {
+                expectedPrice = 5;
+            }
+
+            everyDisplayedPriceIsCorrect = everyDisplayedPriceIsCorrect
+                && offer->displayedPrice == expectedPrice
+                && expectedPrice > 0;
+            oldOfferWasReplaced = oldOfferWasReplaced
+                && offer->unitId != "old_offer";
+        }
+        runner.check(
+            allSlotsContainOffers,
+            "ShopService uses the configured slot count and fills every slot");
+        runner.check(
+            everyDisplayedPriceIsCorrect,
+            "ShopService stores each unit's calculated level-one price");
+        runner.check(
+            oldOfferWasReplaced,
+            "ShopService rebuild replaces every previous offer");
+
+        const std::vector<autochess::core::UnitDefinition> singleUnitPool{
+            units.front()};
+        autochess::core::ShopState repeatedShop;
+        std::mt19937 repeatedEngine(77u);
+        const auto repeatedResult = autochess::core::ShopService::rebuild(
+            player,
+            repeatedShop,
+            gameConfig,
+            singleUnitPool,
+            faction,
+            noModifiers,
+            repeatedEngine);
+        bool everyOfferIsRepeated = repeatedResult.success
+            && repeatedShop.offers.size()
+                == static_cast<std::size_t>(gameConfig.shopSlots);
+        for (const auto& offer : repeatedShop.offers)
+        {
+            everyOfferIsRepeated = everyOfferIsRepeated
+                && offer.has_value()
+                && offer->unitId == "cheap_unit"
+                && offer->displayedPrice == 2;
+        }
+        runner.check(
+            everyOfferIsRepeated,
+            "ShopService samples an unlimited unit pool with replacement");
+
+        autochess::core::PlayerState refreshedPlayer = player;
+        autochess::core::ShopState refreshedShop;
+        refreshedShop.offers.emplace_back(
+            autochess::core::ShopOffer{"old_offer", 99});
+        std::mt19937 refreshEngine(123u);
+        const auto refreshResult = autochess::core::ShopService::refresh(
+            refreshedPlayer,
+            refreshedShop,
+            gameConfig,
+            units,
+            faction,
+            noModifiers,
+            refreshEngine);
+        runner.check(
+            refreshResult.success
+                && refreshResult.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !refreshResult.message.empty()
+                && refreshedPlayer.gold == 8
+                && refreshedShop.offers.size() == 6
+                && refreshedShop.offers.front().has_value()
+                && refreshedShop.offers.front()->unitId != "old_offer",
+            "ShopService refresh replaces offers and deducts the configured cost");
+
+        autochess::core::PlayerState poorPlayer = player;
+        poorPlayer.gold = 1;
+        autochess::core::ShopState poorShop;
+        poorShop.offers.emplace_back(
+            autochess::core::ShopOffer{"unchanged_offer", 7});
+        std::mt19937 poorEngine(456u);
+        const autochess::core::PlayerState poorPlayerBefore = poorPlayer;
+        const autochess::core::ShopState poorShopBefore = poorShop;
+        const std::mt19937 poorEngineBefore = poorEngine;
+        const auto poorResult = autochess::core::ShopService::refresh(
+            poorPlayer,
+            poorShop,
+            gameConfig,
+            units,
+            faction,
+            noModifiers,
+            poorEngine);
+        runner.check(
+            !poorResult.success
+                && poorResult.errorCode
+                    == autochess::core::CommandErrorCode::InsufficientGold
+                && !poorResult.message.empty()
+                && playersAreEqual(poorPlayer, poorPlayerBefore)
+                && shopsAreEqual(poorShop, poorShopBefore)
+                && poorEngine == poorEngineBefore,
+            "ShopService leaves all state unchanged when refresh gold is insufficient");
+
+        const std::vector<autochess::core::UnitDefinition> emptyUnitPool;
+        autochess::core::ShopState emptyPoolShop = poorShopBefore;
+        std::mt19937 emptyPoolEngine(789u);
+        const autochess::core::ShopState emptyPoolShopBefore = emptyPoolShop;
+        const std::mt19937 emptyPoolEngineBefore = emptyPoolEngine;
+        const auto emptyPoolResult = autochess::core::ShopService::rebuild(
+            player,
+            emptyPoolShop,
+            gameConfig,
+            emptyUnitPool,
+            faction,
+            noModifiers,
+            emptyPoolEngine);
+        runner.check(
+            !emptyPoolResult.success
+                && emptyPoolResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidConfiguration
+                && !emptyPoolResult.message.empty()
+                && shopsAreEqual(emptyPoolShop, emptyPoolShopBefore)
+                && emptyPoolEngine == emptyPoolEngineBefore,
+            "ShopService rejects an empty unit pool without changing state");
+
+        auto invalidPriceUnits = singleUnitPool;
+        invalidPriceUnits.front().price = 0;
+        autochess::core::PlayerState invalidPricePlayer = player;
+        autochess::core::ShopState invalidPriceShop = poorShopBefore;
+        std::mt19937 invalidPriceEngine(987u);
+        const autochess::core::PlayerState invalidPricePlayerBefore =
+            invalidPricePlayer;
+        const autochess::core::ShopState invalidPriceShopBefore =
+            invalidPriceShop;
+        const std::mt19937 invalidPriceEngineBefore = invalidPriceEngine;
+        const auto invalidPriceResult = autochess::core::ShopService::refresh(
+            invalidPricePlayer,
+            invalidPriceShop,
+            gameConfig,
+            invalidPriceUnits,
+            faction,
+            noModifiers,
+            invalidPriceEngine);
+        runner.check(
+            !invalidPriceResult.success
+                && invalidPriceResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidConfiguration
+                && !invalidPriceResult.message.empty()
+                && playersAreEqual(
+                    invalidPricePlayer,
+                    invalidPricePlayerBefore)
+                && shopsAreEqual(invalidPriceShop, invalidPriceShopBefore)
+                && invalidPriceEngine == invalidPriceEngineBefore,
+            "ShopService rejects invalid prices without changing state");
+
+        autochess::core::PlayerState mismatchedPlayer = player;
+        mismatchedPlayer.factionId = "other_team";
+        autochess::core::ShopState mismatchedShop = poorShopBefore;
+        std::mt19937 mismatchedEngine(654u);
+        const autochess::core::PlayerState mismatchedPlayerBefore =
+            mismatchedPlayer;
+        const autochess::core::ShopState mismatchedShopBefore =
+            mismatchedShop;
+        const std::mt19937 mismatchedEngineBefore = mismatchedEngine;
+        const auto mismatchResult = autochess::core::ShopService::refresh(
+            mismatchedPlayer,
+            mismatchedShop,
+            gameConfig,
+            units,
+            faction,
+            noModifiers,
+            mismatchedEngine);
+        runner.check(
+            !mismatchResult.success
+                && mismatchResult.errorCode
+                    == autochess::core::CommandErrorCode::InconsistentState
+                && !mismatchResult.message.empty()
+                && playersAreEqual(mismatchedPlayer, mismatchedPlayerBefore)
+                && shopsAreEqual(mismatchedShop, mismatchedShopBefore)
+                && mismatchedEngine == mismatchedEngineBefore,
+            "ShopService rejects a mismatched faction without changing state");
+
+        auto invalidRefreshConfig = gameConfig;
+        invalidRefreshConfig.shopRefreshCost = -1;
+        autochess::core::PlayerState invalidRefreshPlayer = player;
+        autochess::core::ShopState invalidRefreshShop = poorShopBefore;
+        std::mt19937 invalidRefreshEngine(321u);
+        const autochess::core::PlayerState invalidRefreshPlayerBefore =
+            invalidRefreshPlayer;
+        const autochess::core::ShopState invalidRefreshShopBefore =
+            invalidRefreshShop;
+        const std::mt19937 invalidRefreshEngineBefore = invalidRefreshEngine;
+        const auto invalidRefreshResult =
+            autochess::core::ShopService::refresh(
+                invalidRefreshPlayer,
+                invalidRefreshShop,
+                invalidRefreshConfig,
+                units,
+                faction,
+                noModifiers,
+                invalidRefreshEngine);
+        runner.check(
+            !invalidRefreshResult.success
+                && invalidRefreshResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidConfiguration
+                && !invalidRefreshResult.message.empty()
+                && playersAreEqual(
+                    invalidRefreshPlayer,
+                    invalidRefreshPlayerBefore)
+                && shopsAreEqual(
+                    invalidRefreshShop,
+                    invalidRefreshShopBefore)
+                && invalidRefreshEngine == invalidRefreshEngineBefore,
+            "ShopService rejects a negative refresh cost without changing state");
+
+        return runner.failureCount();
+    }
+
+    int runShopPurchaseTests()
+    {
+        TestRunner runner;
+
+        autochess::core::GameConfig gameConfig;
+        gameConfig.startingGold = 10;
+        gameConfig.rosterCapacity = 2;
+
+        autochess::core::FactionDefinition faction;
+        faction.id = "purchase_team";
+        faction.name = "购买测试分队";
+        faction.initialGuard = 100;
+        faction.maxDeployed = 1;
+        faction.priceMultiplier = 1.0;
+
+        const std::vector<autochess::core::UnitDefinition> units = {
+            [] {
+                autochess::core::UnitDefinition unit;
+                unit.id = "cheap_unit";
+                unit.price = 2;
+                return unit;
+            }(),
+            [] {
+                autochess::core::UnitDefinition unit;
+                unit.id = "normal_unit";
+                unit.price = 3;
+                return unit;
+            }(),
+            [] {
+                autochess::core::UnitDefinition unit;
+                unit.id = "expensive_unit";
+                unit.price = 5;
+                return unit;
+            }()};
+
+        autochess::core::PlayerState player =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        autochess::core::ShopState shop;
+        shop.offers.resize(3);
+        shop.offers[0] =
+            autochess::core::ShopOffer{"cheap_unit", 2};
+        shop.offers[1] =
+            autochess::core::ShopOffer{"normal_unit", 3};
+        autochess::core::OwnedUnitId nextOwnedUnitId = 1;
+
+        const auto firstPurchase =
+            autochess::core::ShopService::purchase(
+                player,
+                shop,
+                0,
+                units,
+                nextOwnedUnitId);
+        std::string validationError;
+        const auto* firstUnit =
+            autochess::core::PlayerStateService::findActive(player, 1);
+        runner.check(
+            firstPurchase.success
+                && firstPurchase.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !firstPurchase.message.empty()
+                && player.gold == 8
+                && player.activeUnits.size() == 1
+                && firstUnit != nullptr
+                && firstUnit->identity
+                    == autochess::core::UnitIdentity{"cheap_unit", 1}
+                && firstUnit->ownerSide == autochess::core::MapSide::A
+                && player.reserveSlots[0].has_value()
+                && player.reserveSlots[0].value() == 1
+                && !shop.offers[0].has_value()
+                && nextOwnedUnitId == 2
+                && autochess::core::PlayerStateService::validate(
+                    player,
+                    validationError),
+            "ShopService purchase creates a level-one unit in the first reserve slot");
+
+        const auto secondPurchase =
+            autochess::core::ShopService::purchase(
+                player,
+                shop,
+                1,
+                units,
+                nextOwnedUnitId);
+        validationError.clear();
+        const auto* secondUnit =
+            autochess::core::PlayerStateService::findActive(player, 2);
+        runner.check(
+            secondPurchase.success
+                && player.gold == 5
+                && player.activeUnits.size() == 2
+                && secondUnit != nullptr
+                && secondUnit->identity
+                    == autochess::core::UnitIdentity{"normal_unit", 1}
+                && player.reserveSlots[1].has_value()
+                && player.reserveSlots[1].value() == 2
+                && !shop.offers[1].has_value()
+                && nextOwnedUnitId == 3
+                && autochess::core::PlayerStateService::validate(
+                    player,
+                    validationError),
+            "ShopService purchase uses the next empty reserve slot and ID");
+
+        auto makeSingleOfferShop = [] {
+            autochess::core::ShopState result;
+            result.offers.resize(1);
+            result.offers[0] =
+                autochess::core::ShopOffer{"cheap_unit", 2};
+            return result;
+        };
+
+        auto poorPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        poorPlayer.gold = 1;
+        auto poorShop = makeSingleOfferShop();
+        const auto poorPlayerBefore = poorPlayer;
+        const auto poorShopBefore = poorShop;
+        autochess::core::OwnedUnitId poorNextId = 20;
+        const auto poorNextIdBefore = poorNextId;
+        const auto poorResult = autochess::core::ShopService::purchase(
+            poorPlayer,
+            poorShop,
+            0,
+            units,
+            poorNextId);
+        runner.check(
+            !poorResult.success
+                && poorResult.errorCode
+                    == autochess::core::CommandErrorCode::InsufficientGold
+                && !poorResult.message.empty()
+                && playersAreEqual(poorPlayer, poorPlayerBefore)
+                && shopsAreEqual(poorShop, poorShopBefore)
+                && poorNextId == poorNextIdBefore,
+            "ShopService rejects insufficient purchase gold atomically");
+
+        auto fullPlayer = player;
+        auto fullShop = makeSingleOfferShop();
+        const auto fullPlayerBefore = fullPlayer;
+        const auto fullShopBefore = fullShop;
+        autochess::core::OwnedUnitId fullNextId = 20;
+        const auto fullNextIdBefore = fullNextId;
+        const auto fullResult = autochess::core::ShopService::purchase(
+            fullPlayer,
+            fullShop,
+            0,
+            units,
+            fullNextId);
+        runner.check(
+            !fullResult.success
+                && fullResult.errorCode
+                    == autochess::core::CommandErrorCode::RosterFull
+                && !fullResult.message.empty()
+                && playersAreEqual(fullPlayer, fullPlayerBefore)
+                && shopsAreEqual(fullShop, fullShopBefore)
+                && fullNextId == fullNextIdBefore,
+            "ShopService rejects a full roster atomically");
+
+        auto invalidSlotPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        auto invalidSlotShop = makeSingleOfferShop();
+        const auto invalidSlotPlayerBefore = invalidSlotPlayer;
+        const auto invalidSlotShopBefore = invalidSlotShop;
+        autochess::core::OwnedUnitId invalidSlotNextId = 30;
+        const auto invalidSlotNextIdBefore = invalidSlotNextId;
+        const auto invalidSlotResult = autochess::core::ShopService::purchase(
+            invalidSlotPlayer,
+            invalidSlotShop,
+            invalidSlotShop.offers.size(),
+            units,
+            invalidSlotNextId);
+        runner.check(
+            !invalidSlotResult.success
+                && invalidSlotResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidShopSlot
+                && playersAreEqual(
+                    invalidSlotPlayer,
+                    invalidSlotPlayerBefore)
+                && shopsAreEqual(invalidSlotShop, invalidSlotShopBefore)
+                && invalidSlotNextId == invalidSlotNextIdBefore,
+            "ShopService rejects an out-of-range purchase slot");
+
+        auto emptySlotPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        auto emptySlotShop = makeSingleOfferShop();
+        emptySlotShop.offers[0].reset();
+        const auto emptySlotPlayerBefore = emptySlotPlayer;
+        const auto emptySlotShopBefore = emptySlotShop;
+        autochess::core::OwnedUnitId emptySlotNextId = 31;
+        const auto emptySlotNextIdBefore = emptySlotNextId;
+        const auto emptySlotResult = autochess::core::ShopService::purchase(
+            emptySlotPlayer,
+            emptySlotShop,
+            0,
+            units,
+            emptySlotNextId);
+        runner.check(
+            !emptySlotResult.success
+                && emptySlotResult.errorCode
+                    == autochess::core::CommandErrorCode::EmptyShopSlot
+                && playersAreEqual(emptySlotPlayer, emptySlotPlayerBefore)
+                && shopsAreEqual(emptySlotShop, emptySlotShopBefore)
+                && emptySlotNextId == emptySlotNextIdBefore,
+            "ShopService rejects an empty purchase slot");
+
+        auto missingUnitPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        auto missingUnitShop = makeSingleOfferShop();
+        missingUnitShop.offers[0]->unitId = "missing_unit";
+        const auto missingUnitPlayerBefore = missingUnitPlayer;
+        const auto missingUnitShopBefore = missingUnitShop;
+        autochess::core::OwnedUnitId missingUnitNextId = 32;
+        const auto missingUnitNextIdBefore = missingUnitNextId;
+        const auto missingUnitResult = autochess::core::ShopService::purchase(
+            missingUnitPlayer,
+            missingUnitShop,
+            0,
+            units,
+            missingUnitNextId);
+        runner.check(
+            !missingUnitResult.success
+                && missingUnitResult.errorCode
+                    == autochess::core::CommandErrorCode::UnitNotFound
+                && playersAreEqual(
+                    missingUnitPlayer,
+                    missingUnitPlayerBefore)
+                && shopsAreEqual(missingUnitShop, missingUnitShopBefore)
+                && missingUnitNextId == missingUnitNextIdBefore,
+            "ShopService rejects an offer with a missing unit definition");
+
+        auto invalidPricePlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        auto invalidPriceShop = makeSingleOfferShop();
+        invalidPriceShop.offers[0]->displayedPrice = 0;
+        const auto invalidPricePlayerBefore = invalidPricePlayer;
+        const auto invalidPriceShopBefore = invalidPriceShop;
+        autochess::core::OwnedUnitId invalidPriceNextId = 33;
+        const auto invalidPriceNextIdBefore = invalidPriceNextId;
+        const auto invalidPriceResult = autochess::core::ShopService::purchase(
+            invalidPricePlayer,
+            invalidPriceShop,
+            0,
+            units,
+            invalidPriceNextId);
+        runner.check(
+            !invalidPriceResult.success
+                && invalidPriceResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidConfiguration
+                && playersAreEqual(
+                    invalidPricePlayer,
+                    invalidPricePlayerBefore)
+                && shopsAreEqual(invalidPriceShop, invalidPriceShopBefore)
+                && invalidPriceNextId == invalidPriceNextIdBefore,
+            "ShopService rejects a non-positive displayed price");
+
+        auto zeroIdPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                gameConfig,
+                faction);
+        auto zeroIdShop = makeSingleOfferShop();
+        const auto zeroIdPlayerBefore = zeroIdPlayer;
+        const auto zeroIdShopBefore = zeroIdShop;
+        autochess::core::OwnedUnitId zeroNextId =
+            autochess::core::InvalidOwnedUnitId;
+        const auto zeroIdResult = autochess::core::ShopService::purchase(
+            zeroIdPlayer,
+            zeroIdShop,
+            0,
+            units,
+            zeroNextId);
+        runner.check(
+            !zeroIdResult.success
+                && zeroIdResult.errorCode
+                    == autochess::core::CommandErrorCode::InconsistentState
+                && playersAreEqual(zeroIdPlayer, zeroIdPlayerBefore)
+                && shopsAreEqual(zeroIdShop, zeroIdShopBefore)
+                && zeroNextId == autochess::core::InvalidOwnedUnitId,
+            "ShopService rejects an invalid next owned-unit ID");
+
+        auto duplicateIdPlayer = player;
+        duplicateIdPlayer.activeUnits.pop_back();
+        duplicateIdPlayer.reserveSlots[1].reset();
+        auto duplicateIdShop = makeSingleOfferShop();
+        const auto duplicateIdPlayerBefore = duplicateIdPlayer;
+        const auto duplicateIdShopBefore = duplicateIdShop;
+        autochess::core::OwnedUnitId duplicateNextId = 1;
+        const auto duplicateIdResult = autochess::core::ShopService::purchase(
+            duplicateIdPlayer,
+            duplicateIdShop,
+            0,
+            units,
+            duplicateNextId);
+        runner.check(
+            !duplicateIdResult.success
+                && duplicateIdResult.errorCode
+                    == autochess::core::CommandErrorCode::InconsistentState
+                && playersAreEqual(
+                    duplicateIdPlayer,
+                    duplicateIdPlayerBefore)
+                && shopsAreEqual(duplicateIdShop, duplicateIdShopBefore)
+                && duplicateNextId == 1,
+            "ShopService rejects an already-used owned-unit ID");
+
+        auto invalidStatePlayer = player;
+        invalidStatePlayer.deployments.emplace(
+            autochess::core::GridPosition{1, 1},
+            invalidStatePlayer.activeUnits.front().id);
+        auto invalidStateShop = makeSingleOfferShop();
+        const auto invalidStatePlayerBefore = invalidStatePlayer;
+        const auto invalidStateShopBefore = invalidStateShop;
+        autochess::core::OwnedUnitId invalidStateNextId = 40;
+        const auto invalidStateResult = autochess::core::ShopService::purchase(
+            invalidStatePlayer,
+            invalidStateShop,
+            0,
+            units,
+            invalidStateNextId);
+        runner.check(
+            !invalidStateResult.success
+                && invalidStateResult.errorCode
+                    == autochess::core::CommandErrorCode::InconsistentState
+                && playersAreEqual(
+                    invalidStatePlayer,
+                    invalidStatePlayerBefore)
+                && shopsAreEqual(invalidStateShop, invalidStateShopBefore)
+                && invalidStateNextId == 40,
+            "ShopService rejects an already-invalid player state");
 
         return runner.failureCount();
     }
@@ -1420,6 +2134,24 @@ int main()
     }
 
     std::cout << "[PASS] Price rules test suite\n";
+
+    const int shopServiceFailures = runShopServiceTests();
+    assert(shopServiceFailures == 0);
+    if (shopServiceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Shop service test suite\n";
+
+    const int shopPurchaseFailures = runShopPurchaseTests();
+    assert(shopPurchaseFailures == 0);
+    if (shopPurchaseFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Shop purchase test suite\n";
 
     const int playerStateServiceFailures = runPlayerStateServiceTests();
     assert(playerStateServiceFailures == 0);

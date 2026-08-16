@@ -20,6 +20,7 @@ namespace autochess::core
     enum class CommandErrorCode
     {
         None,
+        InvalidConfiguration,
         InvalidShopSlot,
         EmptyShopSlot,
         InsufficientGold,
