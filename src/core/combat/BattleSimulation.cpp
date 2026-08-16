@@ -1,10 +1,12 @@
 #include "core/combat/BattleSimulation.hpp"
 
 #include "core/combat/CombatRules.hpp"
+#include "core/combat/TargetSelector.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace autochess::core
 {
@@ -222,6 +224,142 @@ namespace autochess::core
         }
     }
 
+    void BattleSimulation::clearInvalidTarget(
+        BattleUnit& unit) const noexcept
+    {
+        if (!unit.targetId.has_value())
+        {
+            return;
+        }
+
+        const auto iterator = std::find_if(
+            units_.begin(),
+            units_.end(),
+            [&unit](const BattleUnit& candidate)
+            {
+                return candidate.id == unit.targetId.value();
+            });
+        if (iterator == units_.end()
+            || iterator->state != BattleUnitState::Alive
+            || iterator->side == unit.side
+            || CombatRules::distance(
+                   unit.position,
+                   iterator->position)
+                > unit.stats.attackRange)
+        {
+            unit.targetId.reset();
+        }
+    }
+
+    void BattleSimulation::updateTargets()
+    {
+        for (BattleUnit& unit : units_)
+        {
+            if (unit.state == BattleUnitState::Alive)
+            {
+                TargetSelector::update(unit, units_, currentFrame_);
+            }
+        }
+    }
+
+    void BattleSimulation::applyAttacks()
+    {
+        struct AttackIntent
+        {
+            BattleUnitId attackerId = InvalidBattleUnitId;
+            BattleUnitId targetId = InvalidBattleUnitId;
+            double damage = 0.0;
+        };
+
+        std::vector<AttackIntent> intents;
+        for (BattleUnit& attacker : units_)
+        {
+            if (attacker.state != BattleUnitState::Alive
+                || attacker.basicAction != BasicAction::Attack
+                || !attacker.targetId.has_value())
+            {
+                continue;
+            }
+
+            const double interval = CombatRules::attackInterval(
+                attacker.stats.attackSpeed);
+            if (attacker.attackElapsed + 1.0e-9 < interval)
+            {
+                continue;
+            }
+
+            const auto targetIterator = std::find_if(
+                units_.begin(),
+                units_.end(),
+                [&attacker](const BattleUnit& candidate)
+                {
+                    return candidate.id == attacker.targetId.value()
+                        && candidate.state == BattleUnitState::Alive
+                        && candidate.side != attacker.side;
+                });
+            if (targetIterator == units_.end())
+            {
+                attacker.targetId.reset();
+                continue;
+            }
+
+            double damage = 0.0;
+            if (attacker.basicDamageType == DamageType::Physical)
+            {
+                damage = CombatRules::physicalDamage(
+                    attacker.stats.attackPower,
+                    targetIterator->stats.physicalDefense);
+            }
+            else if (attacker.basicDamageType == DamageType::Magic)
+            {
+                damage = CombatRules::magicDamage(
+                    attacker.stats.attackPower,
+                    targetIterator->stats.magicResistance);
+            }
+            else
+            {
+                continue;
+            }
+
+            intents.push_back(AttackIntent{
+                attacker.id,
+                targetIterator->id,
+                damage});
+            attacker.attackElapsed = 0.0;
+        }
+
+        std::map<BattleUnitId, double> accumulatedDamage;
+        for (const AttackIntent& intent : intents)
+        {
+            accumulatedDamage[intent.targetId] += intent.damage;
+        }
+
+        for (const auto& damage : accumulatedDamage)
+        {
+            const auto targetIterator = std::find_if(
+                units_.begin(),
+                units_.end(),
+                [&damage](const BattleUnit& unit)
+                {
+                    return unit.id == damage.first
+                        && unit.state == BattleUnitState::Alive;
+                });
+            if (targetIterator == units_.end())
+            {
+                continue;
+            }
+
+            targetIterator->health -= damage.second;
+            if (targetIterator->health <= 0.0)
+            {
+                targetIterator->health = 0.0;
+                targetIterator->state = BattleUnitState::Dead;
+                targetIterator->targetId.reset();
+                targetIterator->firstInRangeFrame.clear();
+            }
+        }
+    }
+
     bool BattleSimulation::allUnitsResolved() const noexcept
     {
         return std::all_of(
@@ -279,12 +417,24 @@ namespace autochess::core
         ++currentFrame_;
         for (BattleUnit& unit : units_)
         {
+            if (unit.state == BattleUnitState::Alive)
+            {
+                unit.attackElapsed += FixedDeltaSeconds;
+                clearInvalidTarget(unit);
+            }
+        }
+
+        for (BattleUnit& unit : units_)
+        {
             if (unit.state == BattleUnitState::Alive
                 && !unit.targetId.has_value())
             {
                 moveUnit(unit);
             }
         }
+
+        updateTargets();
+        applyAttacks();
 
         if (allUnitsResolved())
         {

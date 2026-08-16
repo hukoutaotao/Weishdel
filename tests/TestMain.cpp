@@ -3,6 +3,7 @@
 #include "core/combat/BattleSetupService.hpp"
 #include "core/combat/BattleTypes.hpp"
 #include "core/combat/CombatRules.hpp"
+#include "core/combat/TargetSelector.hpp"
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/config/ConfigError.hpp"
 #include "core/config/DefinitionConfigLoader.hpp"
@@ -4642,6 +4643,163 @@ namespace
 
         return runner.failureCount();
     }
+
+    int runTargetSelectorTests()
+    {
+        TestRunner runner;
+
+        autochess::core::BattleUnit attacker;
+        attacker.id = 1;
+        attacker.side = autochess::core::MapSide::A;
+        attacker.position = {1.5, 1.5};
+        attacker.stats.attackRange = 2.0;
+
+        auto firstTarget = attacker;
+        firstTarget.id = 2;
+        firstTarget.ownedUnitId = 20;
+        firstTarget.side = autochess::core::MapSide::B;
+        firstTarget.position = {4.5, 1.5};
+
+        auto secondTarget = firstTarget;
+        secondTarget.id = 3;
+        secondTarget.ownedUnitId = 30;
+        secondTarget.position = {2.5, 1.5};
+
+        std::vector<autochess::core::BattleUnit> units = {
+            attacker,
+            firstTarget,
+            secondTarget};
+        autochess::core::TargetSelector::update(units[0], units, 5);
+        runner.check(
+            units[0].targetId.has_value()
+                && units[0].targetId.value() == 3
+                && units[0].firstInRangeFrame.size() == 1
+                && units[0].firstInRangeFrame.at(3) == 5,
+            "Target selector records the first frame in range");
+
+        units[1].position = {2.5, 1.5};
+        autochess::core::TargetSelector::update(units[0], units, 6);
+        runner.check(
+            units[0].targetId.has_value()
+                && units[0].targetId.value() == 3
+                && units[0].firstInRangeFrame.at(2) == 6
+                && units[0].firstInRangeFrame.at(3) == 5,
+            "Target selector prefers the earlier entering target");
+
+        units[2].position = {4.5, 1.5};
+        autochess::core::TargetSelector::update(units[0], units, 7);
+        runner.check(
+            units[0].targetId.has_value()
+                && units[0].targetId.value() == 2
+                && units[0].firstInRangeFrame.size() == 1
+                && units[0].firstInRangeFrame.at(2) == 6,
+            "Target selector clears an out-of-range target and reacquires");
+
+        units[1].state = autochess::core::BattleUnitState::Dead;
+        autochess::core::TargetSelector::update(units[0], units, 8);
+        runner.check(
+            !units[0].targetId.has_value()
+                && units[0].firstInRangeFrame.empty(),
+            "Target selector clears dead targets immediately");
+
+        return runner.failureCount();
+    }
+
+    int runBattleAttackTests()
+    {
+        TestRunner runner;
+
+        auto makeUnit = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::OwnedUnitId ownedUnitId,
+            const autochess::core::MapSide side,
+            const double health,
+            const double attackPower)
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = id;
+            unit.ownedUnitId = ownedUnitId;
+            unit.identity = {"attack_unit", 1};
+            unit.side = side;
+            unit.basicAction = autochess::core::BasicAction::Attack;
+            unit.basicDamageType = autochess::core::DamageType::Physical;
+            unit.position = side == autochess::core::MapSide::A
+                ? autochess::core::BattlePosition{1.5, 1.5}
+                : autochess::core::BattlePosition{2.5, 1.5};
+            unit.stats.maxHealth = health;
+            unit.stats.attackPower = attackPower;
+            unit.stats.physicalDefense = 7.0;
+            unit.stats.attackRange = 2.0;
+            unit.stats.attackSpeed = 100.0;
+            unit.health = health;
+            return unit;
+        };
+
+        autochess::core::MapDefinition map;
+        map.id = "attack_map";
+        map.width = 5;
+        map.height = 3;
+        map.gridRows = {
+            "#####",
+            "#...#",
+            "#####"};
+
+        {
+            auto attacker = makeUnit(1, 10, autochess::core::MapSide::A,
+                100.0, 20.0);
+            auto target = makeUnit(2, 20, autochess::core::MapSide::B,
+                20.0, 0.0);
+            target.basicAction = autochess::core::BasicAction::Unknown;
+            target.stats.attackRange = 0.0;
+
+            autochess::core::BattleSimulation simulation(
+                {attacker, target},
+                map,
+                3);
+            for (int frame = 0; frame < 60; ++frame)
+            {
+                simulation.step();
+            }
+
+            runner.check(
+                !simulation.isFinished()
+                    && nearlyEqual(simulation.units()[1].health, 7.0)
+                    && simulation.units()[0].targetId.has_value()
+                    && simulation.units()[0].targetId.value() == 2,
+                "Battle attacks apply physical damage after one interval");
+        }
+
+        {
+            auto first = makeUnit(1, 10, autochess::core::MapSide::A,
+                5.0, 0.0);
+            auto second = makeUnit(2, 20, autochess::core::MapSide::B,
+                5.0, 0.0);
+            autochess::core::BattleSimulation simulation(
+                {first, second},
+                map,
+                3);
+            for (int frame = 0; frame < 60; ++frame)
+            {
+                simulation.step();
+            }
+
+            const auto& summary = simulation.summary();
+            runner.check(
+                simulation.isFinished()
+                    && summary.endReason
+                        == autochess::core::BattleSummary::EndReason::
+                            AllUnitsResolved
+                    && simulation.units()[0].state
+                        == autochess::core::BattleUnitState::Dead
+                    && simulation.units()[1].state
+                        == autochess::core::BattleUnitState::Dead
+                    && summary.deadOwnedUnitIds
+                        == std::vector<autochess::core::OwnedUnitId>{10, 20},
+                "Battle attacks resolve simultaneous mutual deaths in one frame");
+        }
+
+        return runner.failureCount();
+    }
 }
 
 // 此函数依次运行所有核心配置测试并把失败转换为非零退出码。
@@ -4803,6 +4961,24 @@ int main()
     }
 
     std::cout << "[PASS] Battle movement test suite\n";
+
+    const int targetSelectorFailures = runTargetSelectorTests();
+    assert(targetSelectorFailures == 0);
+    if (targetSelectorFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Target selector test suite\n";
+
+    const int battleAttackFailures = runBattleAttackTests();
+    assert(battleAttackFailures == 0);
+    if (battleAttackFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle attack test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);

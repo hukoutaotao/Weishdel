@@ -55,6 +55,8 @@ add_library(
     src/core/combat/BattleTypes.hpp
     src/core/combat/CombatRules.cpp
     src/core/combat/CombatRules.hpp
+    src/core/combat/TargetSelector.cpp
+    src/core/combat/TargetSelector.hpp
     src/core/economy/EconomyTypes.hpp
     src/core/economy/DeploymentService.cpp
     src/core/economy/DeploymentService.hpp

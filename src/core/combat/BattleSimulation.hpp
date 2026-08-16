@@ -4,6 +4,7 @@
 #include "core/map/MapTypes.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace autochess::core
@@ -39,6 +40,12 @@ namespace autochess::core
         void recoverRouteProgress(BattleUnit& unit) const noexcept;
 
         void moveUnit(BattleUnit& unit);
+
+        void clearInvalidTarget(BattleUnit& unit) const noexcept;
+
+        void updateTargets();
+
+        void applyAttacks();
 
         void markReachedGuard(BattleUnit& unit) noexcept;
 
