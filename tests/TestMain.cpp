@@ -2950,6 +2950,685 @@ namespace
         return runner.failureCount();
     }
 
+    struct EconomyScenarioRun
+    {
+        bool completed = false;
+        autochess::core::PlayerState player;
+        autochess::core::ShopState shop;
+        autochess::core::OwnedUnitId nextOwnedUnitId = 1;
+        std::vector<autochess::core::CommandResult> results;
+        std::vector<autochess::core::PlayerState> playerStates;
+        std::vector<autochess::core::ShopState> shopStates;
+        std::vector<int> goldLog;
+        std::vector<autochess::core::OwnedUnitId> nextIdLog;
+    };
+
+    bool recordEconomyScenarioStep(
+        EconomyScenarioRun& run,
+        const autochess::core::CommandResult& result)
+    {
+        run.results.push_back(result);
+        run.playerStates.push_back(run.player);
+        run.shopStates.push_back(run.shop);
+        run.goldLog.push_back(run.player.gold);
+        run.nextIdLog.push_back(run.nextOwnedUnitId);
+        return result.success;
+    }
+
+    EconomyScenarioRun executeEconomyScenario(
+        const autochess::core::ConfigBundle& bundle,
+        const autochess::core::FactionDefinition& faction,
+        const autochess::core::MapDefinition& map)
+    {
+        EconomyScenarioRun run;
+        run.player = autochess::core::PlayerStateService::createInitial(
+            autochess::core::MapSide::A,
+            bundle.gameConfig,
+            faction);
+        run.playerStates.push_back(run.player);
+        run.shopStates.push_back(run.shop);
+        run.goldLog.push_back(run.player.gold);
+        run.nextIdLog.push_back(run.nextOwnedUnitId);
+
+        std::mt19937 randomEngine(bundle.gameConfig.randomSeed);
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::ShopService::rebuild(
+                    run.player,
+                    run.shop,
+                    bundle.gameConfig,
+                    bundle.units,
+                    faction,
+                    bundle.factionModifiers,
+                    randomEngine)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::ShopService::purchase(
+                    run.player,
+                    run.shop,
+                    0,
+                    bundle.units,
+                    run.nextOwnedUnitId)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::ShopService::purchase(
+                    run.player,
+                    run.shop,
+                    1,
+                    bundle.units,
+                    run.nextOwnedUnitId)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::ShopService::purchase(
+                    run.player,
+                    run.shop,
+                    2,
+                    bundle.units,
+                    run.nextOwnedUnitId)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::MergeService::merge(
+                    run.player,
+                    1,
+                    2,
+                    bundle.gameConfig,
+                    bundle.units,
+                    faction,
+                    bundle.factionModifiers,
+                    run.nextOwnedUnitId)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::DeploymentService::moveToDeployment(
+                    run.player,
+                    map,
+                    faction,
+                    4,
+                    autochess::core::GridPosition{1, 2})))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::DeploymentService::moveToDeployment(
+                    run.player,
+                    map,
+                    faction,
+                    3,
+                    autochess::core::GridPosition{1, 4})))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::RosterService::sell(
+                    run.player,
+                    3,
+                    bundle.gameConfig,
+                    bundle.units,
+                    faction,
+                    bundle.factionModifiers)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::RosterService::markDead(
+                    run.player,
+                    4)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::RosterService::revive(
+                    run.player,
+                    4,
+                    bundle.gameConfig,
+                    bundle.units,
+                    faction,
+                    bundle.factionModifiers)))
+        {
+            return run;
+        }
+
+        if (!recordEconomyScenarioStep(
+                run,
+                autochess::core::ShopService::refresh(
+                    run.player,
+                    run.shop,
+                    bundle.gameConfig,
+                    bundle.units,
+                    faction,
+                    bundle.factionModifiers,
+                    randomEngine)))
+        {
+            return run;
+        }
+
+        run.completed = true;
+        return run;
+    }
+
+    bool economyScenarioRunsAreEqual(
+        const EconomyScenarioRun& left,
+        const EconomyScenarioRun& right)
+    {
+        if (left.completed != right.completed
+            || left.nextOwnedUnitId != right.nextOwnedUnitId
+            || left.goldLog != right.goldLog
+            || left.nextIdLog != right.nextIdLog
+            || left.results.size() != right.results.size()
+            || left.playerStates.size() != right.playerStates.size()
+            || left.shopStates.size() != right.shopStates.size())
+        {
+            return false;
+        }
+
+        for (std::size_t index = 0; index < left.results.size(); ++index)
+        {
+            if (left.results[index].success != right.results[index].success
+                || left.results[index].errorCode
+                    != right.results[index].errorCode
+                || left.results[index].message
+                    != right.results[index].message)
+            {
+                return false;
+            }
+        }
+
+        for (std::size_t index = 0;
+             index < left.playerStates.size();
+             ++index)
+        {
+            if (!playersAreEqual(
+                    left.playerStates[index], right.playerStates[index])
+                || !shopsAreEqual(
+                    left.shopStates[index], right.shopStates[index]))
+            {
+                return false;
+            }
+        }
+
+        return playersAreEqual(left.player, right.player)
+            && shopsAreEqual(left.shop, right.shop);
+    }
+
+    int runEconomyIntegrationScenarioTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(
+            loaded,
+            "Economy integration loads the formal configuration bundle");
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        const autochess::core::FactionDefinition* trainingFaction = nullptr;
+        const autochess::core::UnitDefinition* trainingUnit = nullptr;
+        const autochess::core::MapDefinition* trainingMap = nullptr;
+        for (const autochess::core::FactionDefinition& faction :
+             bundle.factions)
+        {
+            if (faction.id == "training_team")
+            {
+                trainingFaction = &faction;
+                break;
+            }
+        }
+        for (const autochess::core::UnitDefinition& unit : bundle.units)
+        {
+            if (unit.id == "training_guard")
+            {
+                trainingUnit = &unit;
+                break;
+            }
+        }
+        for (const autochess::core::MapDefinition& map : bundle.maps)
+        {
+            if (map.id == "map_01")
+            {
+                trainingMap = &map;
+                break;
+            }
+        }
+
+        const bool formalDataFound = trainingFaction != nullptr
+            && trainingUnit != nullptr
+            && trainingMap != nullptr
+            && bundle.gameConfig.startingGold == 10
+            && bundle.gameConfig.rosterCapacity == 8
+            && bundle.gameConfig.shopSlots == 6
+            && bundle.gameConfig.shopRefreshCost == 2
+            && trainingUnit->price == 3;
+        runner.check(
+            formalDataFound,
+            "Economy integration finds the formal faction, unit, map, and values");
+        if (!formalDataFound)
+        {
+            return runner.failureCount();
+        }
+
+        const EconomyScenarioRun firstRun = executeEconomyScenario(
+            bundle, *trainingFaction, *trainingMap);
+        bool everyCommandSucceeded = firstRun.completed
+            && firstRun.results.size() == 11;
+        for (const autochess::core::CommandResult& result : firstRun.results)
+        {
+            everyCommandSucceeded = everyCommandSucceeded
+                && result.success
+                && result.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !result.message.empty();
+        }
+        runner.check(
+            everyCommandSucceeded,
+            "Economy integration completes every command with a message");
+        if (!firstRun.completed
+            || firstRun.playerStates.size() != 12
+            || firstRun.shopStates.size() != 12)
+        {
+            return runner.failureCount();
+        }
+
+        bool everyStateValid = true;
+        for (const autochess::core::PlayerState& state :
+             firstRun.playerStates)
+        {
+            std::string validationError;
+            everyStateValid = everyStateValid
+                && autochess::core::PlayerStateService::validate(
+                    state, validationError);
+        }
+        runner.check(
+            everyStateValid,
+            "Economy integration keeps every intermediate player state valid");
+
+        const auto allOffersMatchFormalUnit = [trainingUnit](
+            const autochess::core::ShopState& shop)
+        {
+            if (shop.offers.size() != 6)
+            {
+                return false;
+            }
+
+            for (const std::optional<autochess::core::ShopOffer>& offer :
+                 shop.offers)
+            {
+                if (!offer.has_value()
+                    || offer->unitId != trainingUnit->id
+                    || offer->displayedPrice != 3)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
+        const auto& rebuiltState = firstRun.playerStates[1];
+        runner.check(
+            rebuiltState.gold == 10
+                && rebuiltState.activeUnits.empty()
+                && allOffersMatchFormalUnit(firstRun.shopStates[1]),
+            "Economy integration rebuilds six formal offers without charging gold");
+
+        const auto& firstPurchaseState = firstRun.playerStates[2];
+        const auto& secondPurchaseState = firstRun.playerStates[3];
+        const auto& thirdPurchaseState = firstRun.playerStates[4];
+        runner.check(
+            firstPurchaseState.gold == 7
+                && firstPurchaseState.activeUnits.size() == 1
+                && firstPurchaseState.reserveSlots[0] == 1
+                && firstRun.nextIdLog[2] == 2
+                && secondPurchaseState.gold == 4
+                && secondPurchaseState.activeUnits.size() == 2
+                && secondPurchaseState.reserveSlots[1] == 2
+                && firstRun.nextIdLog[3] == 3
+                && thirdPurchaseState.gold == 1
+                && thirdPurchaseState.activeUnits.size() == 3
+                && thirdPurchaseState.reserveSlots[2] == 3
+                && firstRun.nextIdLog[4] == 4,
+            "Economy integration purchases IDs one through three into reserve slots");
+
+        const auto& mergedState = firstRun.playerStates[5];
+        const autochess::core::OwnedUnit* mergedUnit =
+            autochess::core::PlayerStateService::findActive(mergedState, 4);
+        runner.check(
+            mergedState.gold == 2
+                && mergedState.activeUnits.size() == 2
+                && autochess::core::PlayerStateService::findActive(
+                    mergedState, 1) == nullptr
+                && autochess::core::PlayerStateService::findActive(
+                    mergedState, 2) == nullptr
+                && mergedUnit != nullptr
+                && mergedUnit->identity.unitId == trainingUnit->id
+                && mergedUnit->identity.level == 2
+                && mergedState.reserveSlots[1] == 4
+                && mergedState.reserveSlots[2] == 3
+                && firstRun.nextIdLog[5] == 5,
+            "Economy integration merges IDs one and two into level-two ID four");
+
+        const auto& firstDeploymentState = firstRun.playerStates[6];
+        const auto firstDeployment =
+            autochess::core::PlayerStateService::findDeploymentPosition(
+                firstDeploymentState, 4);
+        runner.check(
+            firstDeploymentState.gold == 2
+                && firstDeploymentState.deployments.size() == 1
+                && firstDeployment.has_value()
+                && firstDeployment.value()
+                    == autochess::core::GridPosition{1, 2}
+                && !firstDeploymentState.reserveSlots[1].has_value(),
+            "Economy integration deploys level-two ID four to the upper start");
+
+        const auto& secondDeploymentState = firstRun.playerStates[7];
+        const auto secondDeployment =
+            autochess::core::PlayerStateService::findDeploymentPosition(
+                secondDeploymentState, 3);
+        runner.check(
+            secondDeploymentState.gold == 2
+                && secondDeploymentState.deployments.size() == 2
+                && secondDeployment.has_value()
+                && secondDeployment.value()
+                    == autochess::core::GridPosition{1, 4}
+                && !secondDeploymentState.reserveSlots[2].has_value(),
+            "Economy integration deploys ID three to the lower start");
+
+        const auto& soldState = firstRun.playerStates[8];
+        runner.check(
+            soldState.gold == 4
+                && soldState.activeUnits.size() == 1
+                && autochess::core::PlayerStateService::findActive(
+                    soldState, 3) == nullptr
+                && soldState.deployments.size() == 1
+                && soldState.deployments.find(
+                    autochess::core::GridPosition{1, 4})
+                    == soldState.deployments.end(),
+            "Economy integration sells deployed ID three for two gold");
+
+        const auto& deadState = firstRun.playerStates[9];
+        const autochess::core::OwnedUnit* deadUnit =
+            autochess::core::PlayerStateService::findDead(deadState, 4);
+        runner.check(
+            deadState.gold == 4
+                && deadState.activeUnits.empty()
+                && deadState.deadUnits.size() == 1
+                && deadUnit != nullptr
+                && deadUnit->identity.level == 2
+                && deadState.deployments.empty(),
+            "Economy integration moves deployed ID four to the dead list");
+
+        const auto& revivedState = firstRun.playerStates[10];
+        const autochess::core::OwnedUnit* revivedUnit =
+            autochess::core::PlayerStateService::findActive(revivedState, 4);
+        runner.check(
+            revivedState.gold == 2
+                && revivedState.activeUnits.size() == 1
+                && revivedState.deadUnits.empty()
+                && revivedUnit != nullptr
+                && revivedUnit->identity.level == 2
+                && revivedState.reserveSlots[0] == 4
+                && revivedState.deployments.empty(),
+            "Economy integration revives ID four into the first reserve slot");
+
+        const auto& finalState = firstRun.playerStates[11];
+        runner.check(
+            finalState.gold == 0
+                && finalState.activeUnits.size() == 1
+                && finalState.deadUnits.empty()
+                && finalState.reserveSlots[0] == 4
+                && finalState.deployments.empty()
+                && firstRun.nextOwnedUnitId == 5
+                && allOffersMatchFormalUnit(firstRun.shopStates[11]),
+            "Economy integration refreshes the shop and reaches the expected final state");
+
+        const std::vector<int> expectedGoldLog = {
+            10, 10, 7, 4, 1, 2, 2, 2, 4, 4, 2, 0};
+        runner.check(
+            firstRun.goldLog == expectedGoldLog,
+            "Economy integration records the exact expected gold sequence");
+
+        auto poorPurchasePlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                bundle.gameConfig,
+                *trainingFaction);
+        poorPurchasePlayer.gold = 2;
+        autochess::core::ShopState poorPurchaseShop;
+        std::mt19937 poorPurchaseEngine(bundle.gameConfig.randomSeed);
+        const auto poorPurchaseRebuild =
+            autochess::core::ShopService::rebuild(
+                poorPurchasePlayer,
+                poorPurchaseShop,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers,
+                poorPurchaseEngine);
+        const auto poorPurchaseBefore = poorPurchasePlayer;
+        const auto poorPurchaseShopBefore = poorPurchaseShop;
+        autochess::core::OwnedUnitId poorPurchaseNextId = 1;
+        const auto poorPurchaseResult =
+            autochess::core::ShopService::purchase(
+                poorPurchasePlayer,
+                poorPurchaseShop,
+                0,
+                bundle.units,
+                poorPurchaseNextId);
+        runner.check(
+            poorPurchaseRebuild.success
+                && !poorPurchaseResult.success
+                && poorPurchaseResult.errorCode
+                    == autochess::core::CommandErrorCode::InsufficientGold
+                && !poorPurchaseResult.message.empty()
+                && playersAreEqual(
+                    poorPurchasePlayer, poorPurchaseBefore)
+                && shopsAreEqual(
+                    poorPurchaseShop, poorPurchaseShopBefore)
+                && poorPurchaseNextId == 1,
+            "Economy integration rejects an unaffordable purchase atomically");
+
+        auto poorRefreshPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                bundle.gameConfig,
+                *trainingFaction);
+        poorRefreshPlayer.gold = 1;
+        autochess::core::ShopState poorRefreshShop;
+        std::mt19937 poorRefreshEngine(bundle.gameConfig.randomSeed);
+        const auto poorRefreshRebuild =
+            autochess::core::ShopService::rebuild(
+                poorRefreshPlayer,
+                poorRefreshShop,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers,
+                poorRefreshEngine);
+        const auto poorRefreshBefore = poorRefreshPlayer;
+        const auto poorRefreshShopBefore = poorRefreshShop;
+        const auto poorRefreshEngineBefore = poorRefreshEngine;
+        const auto poorRefreshResult = autochess::core::ShopService::refresh(
+            poorRefreshPlayer,
+            poorRefreshShop,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers,
+            poorRefreshEngine);
+        runner.check(
+            poorRefreshRebuild.success
+                && !poorRefreshResult.success
+                && poorRefreshResult.errorCode
+                    == autochess::core::CommandErrorCode::InsufficientGold
+                && !poorRefreshResult.message.empty()
+                && playersAreEqual(poorRefreshPlayer, poorRefreshBefore)
+                && shopsAreEqual(poorRefreshShop, poorRefreshShopBefore)
+                && poorRefreshEngine == poorRefreshEngineBefore,
+            "Economy integration rejects an unaffordable refresh atomically");
+
+        auto deploymentPlayer =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                bundle.gameConfig,
+                *trainingFaction);
+        autochess::core::ShopState deploymentShop;
+        std::mt19937 deploymentEngine(bundle.gameConfig.randomSeed);
+        autochess::core::OwnedUnitId deploymentNextId = 1;
+        const auto deploymentRebuild = autochess::core::ShopService::rebuild(
+            deploymentPlayer,
+            deploymentShop,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers,
+            deploymentEngine);
+        const auto firstDeploymentPurchase =
+            autochess::core::ShopService::purchase(
+                deploymentPlayer,
+                deploymentShop,
+                0,
+                bundle.units,
+                deploymentNextId);
+        const auto secondDeploymentPurchase =
+            autochess::core::ShopService::purchase(
+                deploymentPlayer,
+                deploymentShop,
+                1,
+                bundle.units,
+                deploymentNextId);
+        const auto wrongSideBefore = deploymentPlayer;
+        const auto wrongSideResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                deploymentPlayer,
+                *trainingMap,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{9, 2});
+        runner.check(
+            deploymentRebuild.success
+                && firstDeploymentPurchase.success
+                && secondDeploymentPurchase.success
+                && !wrongSideResult.success
+                && wrongSideResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidTarget
+                && !wrongSideResult.message.empty()
+                && playersAreEqual(deploymentPlayer, wrongSideBefore),
+            "Economy integration rejects the opposing deployment start atomically");
+
+        const auto legalDeploymentResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                deploymentPlayer,
+                *trainingMap,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        const auto occupiedBefore = deploymentPlayer;
+        const auto occupiedResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                deploymentPlayer,
+                *trainingMap,
+                *trainingFaction,
+                2,
+                autochess::core::GridPosition{1, 2});
+        runner.check(
+            legalDeploymentResult.success
+                && !occupiedResult.success
+                && occupiedResult.errorCode
+                    == autochess::core::CommandErrorCode::TargetOccupied
+                && !occupiedResult.message.empty()
+                && playersAreEqual(deploymentPlayer, occupiedBefore),
+            "Economy integration rejects an occupied deployment start atomically");
+
+        auto repeatedDeathPlayer = firstRun.player;
+        const auto firstDeathResult =
+            autochess::core::RosterService::markDead(
+                repeatedDeathPlayer, 4);
+        const auto repeatedDeathBefore = repeatedDeathPlayer;
+        const auto repeatedDeathResult =
+            autochess::core::RosterService::markDead(
+                repeatedDeathPlayer, 4);
+        runner.check(
+            firstDeathResult.success
+                && !repeatedDeathResult.success
+                && repeatedDeathResult.errorCode
+                    == autochess::core::CommandErrorCode::UnitAlreadyDead
+                && !repeatedDeathResult.message.empty()
+                && playersAreEqual(
+                    repeatedDeathPlayer, repeatedDeathBefore),
+            "Economy integration rejects marking a dead unit twice atomically");
+
+        auto activeRevivePlayer = firstRun.player;
+        const auto activeReviveBefore = activeRevivePlayer;
+        const auto activeReviveResult = autochess::core::RosterService::revive(
+            activeRevivePlayer,
+            4,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers);
+        runner.check(
+            !activeReviveResult.success
+                && activeReviveResult.errorCode
+                    == autochess::core::CommandErrorCode::UnitAlreadyActive
+                && !activeReviveResult.message.empty()
+                && playersAreEqual(activeRevivePlayer, activeReviveBefore),
+            "Economy integration rejects reviving an active unit atomically");
+
+        const EconomyScenarioRun secondRun = executeEconomyScenario(
+            bundle, *trainingFaction, *trainingMap);
+        runner.check(
+            economyScenarioRunsAreEqual(firstRun, secondRun),
+            "Economy integration reproduces the full scenario with one seed");
+
+        std::cout
+            << "[INFO] Economy integration:\n"
+            << "initial=10\n"
+            << "after_purchase=7,4,1\n"
+            << "after_merge=2\n"
+            << "after_sell=4\n"
+            << "after_death=4\n"
+            << "after_revive=2\n"
+            << "after_refresh=0\n"
+            << "final_active=" << firstRun.player.activeUnits.size() << '\n'
+            << "final_dead=" << firstRun.player.deadUnits.size() << '\n'
+            << "final_deployed=" << firstRun.player.deployments.size() << '\n';
+
+        return runner.failureCount();
+    }
+
     // 此函数检查配置错误是否包含预期类别、路径、行号和中文消息。
     bool hasExpectedConfigError(
         const autochess::core::ConfigError& error,
@@ -3803,6 +4482,16 @@ int main()
     }
 
     std::cout << "[PASS] Roster service test suite\n";
+
+    const int economyIntegrationFailures =
+        runEconomyIntegrationScenarioTests();
+    assert(economyIntegrationFailures == 0);
+    if (economyIntegrationFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Economy integration scenario test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);
