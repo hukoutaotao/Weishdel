@@ -372,8 +372,10 @@ namespace
                 formalLoadError);
         bool formalAmountsAreCorrect = false;
         if (formalLoaded
-            && formalBundle.units.size() == 1
-            && formalBundle.factions.size() == 1)
+            && formalBundle.units.size() == 5
+            && formalBundle.factions.size() == 3
+            && formalBundle.units.front().id == "training_guard"
+            && formalBundle.factions.front().id == "training_team")
         {
             const auto formalPrice =
                 autochess::core::PriceRules::calculateLevelOnePrice(
@@ -3246,8 +3248,12 @@ namespace
             return runner.failureCount();
         }
 
+        // 此代码块用单一正式单位池保持经济场景的固定金币日志可重复。
+        autochess::core::ConfigBundle economyBundle = bundle;
+        economyBundle.units.clear();
+        economyBundle.units.push_back(*trainingUnit);
         const EconomyScenarioRun firstRun = executeEconomyScenario(
-            bundle, *trainingFaction, *trainingMap);
+            economyBundle, *trainingFaction, *trainingMap);
         bool everyCommandSucceeded = firstRun.completed
             && firstRun.results.size() == 11;
         for (const autochess::core::CommandResult& result : firstRun.results)
@@ -3614,7 +3620,7 @@ namespace
             "Economy integration rejects reviving an active unit atomically");
 
         const EconomyScenarioRun secondRun = executeEconomyScenario(
-            bundle, *trainingFaction, *trainingMap);
+            economyBundle, *trainingFaction, *trainingMap);
         runner.check(
             economyScenarioRunsAreEqual(firstRun, secondRun),
             "Economy integration reproduces the full scenario with one seed");
@@ -3961,19 +3967,19 @@ namespace
 
         // 此代码段核对合法定义的数量、关键 ID、枚举和值。
         const bool validDefinitions = factionsLoaded
-            && skills.size() == 1
+            && skills.size() == 5
             && skills.front().id == "training_strike"
             && skills.front().effectType
-                == autochess::core::SkillEffectType::Damage
-            && skills.front().levelValues[2] == 45.0
-            && units.size() == 1
+                == autochess::core::SkillEffectType::Buff
+            && skills.front().levelValues[2] == 16.0
+            && units.size() == 5
             && units.front().id == "training_guard"
             && units.front().skillId == "training_strike"
             && units.front().tags.size() == 2
-            && factions.size() == 1
+            && factions.size() == 3
             && factions.front().id == "training_team"
             && factions.front().maxDeployed == 4
-            && modifiers.size() == 1
+            && modifiers.size() == 6
             && modifiers.front().factionId == "training_team"
             && modifiers.front().unitId == "training_guard"
             && modifiers.front().operation
@@ -4281,10 +4287,10 @@ namespace
         // 此代码段核对整包中的全局参数、定义数量和固定地图顺序。
         const bool validBundle = loaded
             && bundle.gameConfig.maxRounds == 3
-            && bundle.skills.size() == 1
-            && bundle.units.size() == 1
-            && bundle.factions.size() == 1
-            && bundle.factionModifiers.size() == 1
+            && bundle.skills.size() == 5
+            && bundle.units.size() == 5
+            && bundle.factions.size() == 3
+            && bundle.factionModifiers.size() == 6
             && bundle.maps.size() == 2
             && bundle.maps[0].id == "map_01"
             && bundle.maps[1].id == "map_02";
@@ -4425,7 +4431,7 @@ namespace
                 == autochess::core::BattlePosition{1.5, 2.5}
             && units[0].nextRoutePointIndex == 1
             && units[0].routePoints.size() == 12
-            && units[0].health == 100.0;
+            && units[0].health == 160.0;
         runner.check(
             firstUnitIsCorrect,
             "Battle setup preserves identity, route, and grid-center position");
@@ -4434,7 +4440,7 @@ namespace
             && units[1].id == 2
             && units[1].ownedUnitId == 20
             && units[1].identity.level == 2
-            && units[1].stats.maxHealth == 150.0
+            && units[1].stats.maxHealth == 240.0
             && units[1].stats.guardDamage == 8
             && units[1].health == units[1].stats.maxHealth;
         runner.check(
