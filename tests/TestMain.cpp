@@ -7,6 +7,7 @@
 #include "core/config/ConfigParser.hpp"
 #include "core/economy/DeploymentService.hpp"
 #include "core/economy/EconomyTypes.hpp"
+#include "core/economy/MergeService.hpp"
 #include "core/economy/PriceRules.hpp"
 #include "core/economy/ShopService.hpp"
 #include "core/map/MapTypes.hpp"
@@ -17,6 +18,7 @@
 #include <cassert>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -1727,6 +1729,600 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证同类型同等级持久单位能够原子地合成为高一级单位。
+    int runMergeServiceTests()
+    {
+        // 此代码段加载正式配置，以便合成测试复用真实价格、比例、分队和地图数据。
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(
+            loaded,
+            "MergeService loads the formal configuration bundle");
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码段查找训练分队和第一张地图，供价格计算与部署目标测试使用。
+        const autochess::core::FactionDefinition* trainingFaction = nullptr;
+        const autochess::core::MapDefinition* map = nullptr;
+        for (const autochess::core::FactionDefinition& candidate :
+             bundle.factions)
+        {
+            if (candidate.id == "training_team")
+            {
+                trainingFaction = &candidate;
+                break;
+            }
+        }
+        for (const autochess::core::MapDefinition& candidate : bundle.maps)
+        {
+            if (candidate.id == "map_01")
+            {
+                map = &candidate;
+                break;
+            }
+        }
+        runner.check(
+            trainingFaction != nullptr && map != nullptr,
+            "MergeService finds the training faction and map_01");
+        if (trainingFaction == nullptr || map == nullptr)
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码段创建两个同类型同等级备用单位，作为各合成案例的独立初始状态。
+        const auto makePlayer = [&](const int level)
+        {
+            autochess::core::PlayerState player =
+                autochess::core::PlayerStateService::createInitial(
+                    autochess::core::MapSide::A,
+                    bundle.gameConfig,
+                    *trainingFaction);
+            const autochess::core::UnitIdentity identity{
+                "training_guard", level};
+            player.activeUnits = {
+                autochess::core::OwnedUnit{
+                    1, identity, autochess::core::MapSide::A},
+                autochess::core::OwnedUnit{
+                    2, identity, autochess::core::MapSide::A}};
+            player.reserveSlots[0] = 1;
+            player.reserveSlots[1] = 2;
+            return player;
+        };
+
+        // 此代码段验证两个一级备用单位生成新 ID 的二级单位并保留目标槽位。
+        auto levelOnePlayer = makePlayer(1);
+        const int levelOneGoldBefore = levelOnePlayer.gold;
+        autochess::core::OwnedUnitId levelOneNextId = 3;
+        std::string validationError;
+        const auto levelOneResult = autochess::core::MergeService::merge(
+            levelOnePlayer,
+            1,
+            2,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers,
+            levelOneNextId);
+        const autochess::core::OwnedUnit* levelTwoUnit =
+            autochess::core::PlayerStateService::findActive(
+                levelOnePlayer, 3);
+        runner.check(
+            levelOneResult.success
+                && levelOneResult.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !levelOneResult.message.empty()
+                && autochess::core::PlayerStateService::findActive(
+                    levelOnePlayer, 1) == nullptr
+                && autochess::core::PlayerStateService::findActive(
+                    levelOnePlayer, 2) == nullptr
+                && levelTwoUnit != nullptr
+                && levelTwoUnit->identity.unitId == "training_guard"
+                && levelTwoUnit->identity.level == 2
+                && levelOnePlayer.activeUnits.size() == 1
+                && !levelOnePlayer.reserveSlots[0].has_value()
+                && levelOnePlayer.reserveSlots[1].has_value()
+                && levelOnePlayer.reserveSlots[1].value() == 3
+                && levelOnePlayer.gold == levelOneGoldBefore + 1
+                && levelOneNextId == 4
+                && autochess::core::PlayerStateService::validate(
+                    levelOnePlayer,
+                    validationError),
+            "MergeService combines two level-one reserve units");
+
+        // 此代码段验证两个二级单位生成三级单位且返还金额仍按一级价格计算。
+        auto levelTwoPlayer = makePlayer(2);
+        const int levelTwoGoldBefore = levelTwoPlayer.gold;
+        autochess::core::OwnedUnitId levelTwoNextId = 3;
+        const auto levelTwoResult = autochess::core::MergeService::merge(
+            levelTwoPlayer,
+            1,
+            2,
+            bundle.gameConfig,
+            bundle.units,
+            *trainingFaction,
+            bundle.factionModifiers,
+            levelTwoNextId);
+        const autochess::core::OwnedUnit* levelThreeUnit =
+            autochess::core::PlayerStateService::findActive(
+                levelTwoPlayer, 3);
+        validationError.clear();
+        runner.check(
+            levelTwoResult.success
+                && levelThreeUnit != nullptr
+                && levelThreeUnit->identity.level == 3
+                && levelTwoPlayer.gold == levelTwoGoldBefore + 1
+                && levelTwoPlayer.reserveSlots[1].has_value()
+                && levelTwoPlayer.reserveSlots[1].value() == 3
+                && levelTwoNextId == 4
+                && autochess::core::PlayerStateService::validate(
+                    levelTwoPlayer,
+                    validationError),
+            "MergeService combines two level-two units into level three");
+
+        // 此代码段验证目标单位位于部署区时，新单位继承目标部署格而不返回备用区。
+        auto deployedTargetPlayer = makePlayer(1);
+        const auto deploymentPreparationResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                deployedTargetPlayer,
+                *map,
+                *trainingFaction,
+                2,
+                autochess::core::GridPosition{1, 2});
+        autochess::core::OwnedUnitId deployedTargetNextId = 3;
+        const auto deployedTargetMergeResult =
+            autochess::core::MergeService::merge(
+                deployedTargetPlayer,
+                1,
+                2,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers,
+                deployedTargetNextId);
+        validationError.clear();
+        runner.check(
+            deploymentPreparationResult.success
+                && deployedTargetMergeResult.success
+                && !deployedTargetPlayer.reserveSlots[0].has_value()
+                && !deployedTargetPlayer.reserveSlots[1].has_value()
+                && deployedTargetPlayer.deployments.size() == 1
+                && deployedTargetPlayer.deployments.at({1, 2}) == 3
+                && deployedTargetPlayer.activeUnits.size() == 1
+                && deployedTargetNextId == 4
+                && autochess::core::PlayerStateService::validate(
+                    deployedTargetPlayer,
+                    validationError),
+            "MergeService preserves the deployed target position");
+
+        // 此代码段验证源单位在部署区而目标在备用区时，新单位继承目标备用槽位。
+        auto reserveTargetPlayer = makePlayer(1);
+        const auto sourceDeploymentResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                reserveTargetPlayer,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        autochess::core::OwnedUnitId reserveTargetNextId = 3;
+        const auto reserveTargetMergeResult =
+            autochess::core::MergeService::merge(
+                reserveTargetPlayer,
+                1,
+                2,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers,
+                reserveTargetNextId);
+        validationError.clear();
+        runner.check(
+            sourceDeploymentResult.success
+                && reserveTargetMergeResult.success
+                && reserveTargetPlayer.deployments.empty()
+                && !reserveTargetPlayer.reserveSlots[0].has_value()
+                && reserveTargetPlayer.reserveSlots[1].has_value()
+                && reserveTargetPlayer.reserveSlots[1].value() == 3
+                && reserveTargetPlayer.activeUnits.size() == 1
+                && reserveTargetNextId == 4
+                && autochess::core::PlayerStateService::validate(
+                    reserveTargetPlayer,
+                    validationError),
+            "MergeService preserves the reserve target position");
+
+        // 此代码段验证两个已部署单位合成后只保留目标部署格。
+        auto twoDeployedPlayer = makePlayer(1);
+        const auto firstDeploymentResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                twoDeployedPlayer,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        const auto secondDeploymentResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                twoDeployedPlayer,
+                *map,
+                *trainingFaction,
+                2,
+                autochess::core::GridPosition{1, 4});
+        autochess::core::OwnedUnitId twoDeployedNextId = 3;
+        const auto twoDeployedMergeResult =
+            autochess::core::MergeService::merge(
+                twoDeployedPlayer,
+                1,
+                2,
+                bundle.gameConfig,
+                bundle.units,
+                *trainingFaction,
+                bundle.factionModifiers,
+                twoDeployedNextId);
+        validationError.clear();
+        runner.check(
+            firstDeploymentResult.success
+                && secondDeploymentResult.success
+                && twoDeployedMergeResult.success
+                && twoDeployedPlayer.deployments.size() == 1
+                && twoDeployedPlayer.deployments.find({1, 2})
+                    == twoDeployedPlayer.deployments.end()
+                && twoDeployedPlayer.deployments.at({1, 4}) == 3
+                && twoDeployedPlayer.activeUnits.size() == 1
+                && twoDeployedNextId == 4
+                && autochess::core::PlayerStateService::validate(
+                    twoDeployedPlayer,
+                    validationError),
+            "MergeService combines two deployed units at the target start");
+
+        // 此代码段统一验证失败结果、玩家状态和下一持久 ID 均保持不变。
+        const auto expectUnchanged = [&runner](
+            const autochess::core::CommandResult& result,
+            const autochess::core::CommandErrorCode expectedCode,
+            const autochess::core::PlayerState& actualPlayer,
+            const autochess::core::PlayerState& playerBefore,
+            const autochess::core::OwnedUnitId actualNextId,
+            const autochess::core::OwnedUnitId nextIdBefore,
+            const std::string& testName)
+        {
+            runner.check(
+                !result.success
+                    && result.errorCode == expectedCode
+                    && !result.message.empty()
+                    && playersAreEqual(actualPlayer, playerBefore)
+                    && actualNextId == nextIdBefore,
+                testName);
+        };
+
+        // 此代码段验证单位不能与自身合成。
+        auto sameIdPlayer = makePlayer(1);
+        const auto sameIdBefore = sameIdPlayer;
+        autochess::core::OwnedUnitId sameIdNext = 3;
+        const auto sameIdResult = autochess::core::MergeService::merge(
+            sameIdPlayer, 1, 1, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, sameIdNext);
+        expectUnchanged(
+            sameIdResult,
+            autochess::core::CommandErrorCode::NotMergeable,
+            sameIdPlayer,
+            sameIdBefore,
+            sameIdNext,
+            3,
+            "MergeService rejects merging a unit with itself");
+
+        // 此代码段验证缺少源单位时合成失败且状态不变。
+        auto missingSourcePlayer = makePlayer(1);
+        const auto missingSourceBefore = missingSourcePlayer;
+        autochess::core::OwnedUnitId missingSourceNext = 3;
+        const auto missingSourceResult = autochess::core::MergeService::merge(
+            missingSourcePlayer, 99, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, missingSourceNext);
+        expectUnchanged(
+            missingSourceResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            missingSourcePlayer,
+            missingSourceBefore,
+            missingSourceNext,
+            3,
+            "MergeService rejects a missing source unit");
+
+        // 此代码段验证缺少目标单位时合成失败且状态不变。
+        auto missingTargetPlayer = makePlayer(1);
+        const auto missingTargetBefore = missingTargetPlayer;
+        autochess::core::OwnedUnitId missingTargetNext = 3;
+        const auto missingTargetResult = autochess::core::MergeService::merge(
+            missingTargetPlayer, 1, 99, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, missingTargetNext);
+        expectUnchanged(
+            missingTargetResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            missingTargetPlayer,
+            missingTargetBefore,
+            missingTargetNext,
+            3,
+            "MergeService rejects a missing target unit");
+
+        // 此代码段将源单位合法移入死亡列表，以验证死亡单位不能参与合成。
+        auto deadSourcePlayer = makePlayer(1);
+        const auto deadSourceUnit = deadSourcePlayer.activeUnits.front();
+        deadSourcePlayer.activeUnits.erase(
+            deadSourcePlayer.activeUnits.begin());
+        deadSourcePlayer.reserveSlots[0].reset();
+        deadSourcePlayer.deadUnits.push_back(deadSourceUnit);
+        const auto deadSourceBefore = deadSourcePlayer;
+        autochess::core::OwnedUnitId deadSourceNext = 3;
+        const auto deadSourceResult = autochess::core::MergeService::merge(
+            deadSourcePlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, deadSourceNext);
+        expectUnchanged(
+            deadSourceResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            deadSourcePlayer,
+            deadSourceBefore,
+            deadSourceNext,
+            3,
+            "MergeService rejects a dead source unit");
+
+        // 此代码段验证不同单位类型不能合成。
+        auto differentTypePlayer = makePlayer(1);
+        differentTypePlayer.activeUnits[0].identity.unitId = "other_unit";
+        const auto differentTypeBefore = differentTypePlayer;
+        autochess::core::OwnedUnitId differentTypeNext = 3;
+        const auto differentTypeResult = autochess::core::MergeService::merge(
+            differentTypePlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, differentTypeNext);
+        expectUnchanged(
+            differentTypeResult,
+            autochess::core::CommandErrorCode::NotMergeable,
+            differentTypePlayer,
+            differentTypeBefore,
+            differentTypeNext,
+            3,
+            "MergeService rejects different unit types");
+
+        // 此代码段验证不同单位等级不能合成。
+        auto differentLevelPlayer = makePlayer(1);
+        differentLevelPlayer.activeUnits[0].identity.level = 2;
+        const auto differentLevelBefore = differentLevelPlayer;
+        autochess::core::OwnedUnitId differentLevelNext = 3;
+        const auto differentLevelResult = autochess::core::MergeService::merge(
+            differentLevelPlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, differentLevelNext);
+        expectUnchanged(
+            differentLevelResult,
+            autochess::core::CommandErrorCode::NotMergeable,
+            differentLevelPlayer,
+            differentLevelBefore,
+            differentLevelNext,
+            3,
+            "MergeService rejects different unit levels");
+
+        // 此代码段验证达到配置最高等级的单位不能继续合成。
+        auto maxLevelPlayer = makePlayer(3);
+        const auto maxLevelBefore = maxLevelPlayer;
+        autochess::core::OwnedUnitId maxLevelNext = 3;
+        const auto maxLevelResult = autochess::core::MergeService::merge(
+            maxLevelPlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, maxLevelNext);
+        expectUnchanged(
+            maxLevelResult,
+            autochess::core::CommandErrorCode::MaxLevelReached,
+            maxLevelPlayer,
+            maxLevelBefore,
+            maxLevelNext,
+            3,
+            "MergeService rejects units at the maximum level");
+
+        // 此代码段验证小于二级的最高等级配置会被明确拒绝。
+        auto invalidLevelConfig = bundle.gameConfig;
+        invalidLevelConfig.maxUnitLevel = 1;
+        auto invalidLevelPlayer = makePlayer(1);
+        const auto invalidLevelBefore = invalidLevelPlayer;
+        autochess::core::OwnedUnitId invalidLevelNext = 3;
+        const auto invalidLevelResult = autochess::core::MergeService::merge(
+            invalidLevelPlayer, 1, 2, invalidLevelConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, invalidLevelNext);
+        expectUnchanged(
+            invalidLevelResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            invalidLevelPlayer,
+            invalidLevelBefore,
+            invalidLevelNext,
+            3,
+            "MergeService rejects an invalid maximum level configuration");
+
+        // 此代码段验证活动单位缺少对应配置定义时不会被合成。
+        auto missingDefinitionPlayer = makePlayer(1);
+        const auto missingDefinitionBefore = missingDefinitionPlayer;
+        autochess::core::OwnedUnitId missingDefinitionNext = 3;
+        const std::vector<autochess::core::UnitDefinition> noUnits;
+        const auto missingDefinitionResult =
+            autochess::core::MergeService::merge(
+                missingDefinitionPlayer, 1, 2, bundle.gameConfig, noUnits,
+                *trainingFaction, bundle.factionModifiers,
+                missingDefinitionNext);
+        expectUnchanged(
+            missingDefinitionResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            missingDefinitionPlayer,
+            missingDefinitionBefore,
+            missingDefinitionNext,
+            3,
+            "MergeService rejects a missing unit definition");
+
+        // 此代码段验证传入分队与玩家分队不一致时不会计算合成价格。
+        auto mismatchedFaction = *trainingFaction;
+        mismatchedFaction.id = "other_team";
+        auto mismatchedFactionPlayer = makePlayer(1);
+        const auto mismatchedFactionBefore = mismatchedFactionPlayer;
+        autochess::core::OwnedUnitId mismatchedFactionNext = 3;
+        const auto mismatchedFactionResult =
+            autochess::core::MergeService::merge(
+                mismatchedFactionPlayer, 1, 2, bundle.gameConfig,
+                bundle.units, mismatchedFaction, bundle.factionModifiers,
+                mismatchedFactionNext);
+        expectUnchanged(
+            mismatchedFactionResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            mismatchedFactionPlayer,
+            mismatchedFactionBefore,
+            mismatchedFactionNext,
+            3,
+            "MergeService rejects a mismatched faction");
+
+        // 此代码段验证无效的零值下一持久 ID 不会被消耗。
+        auto zeroNextPlayer = makePlayer(1);
+        const auto zeroNextBefore = zeroNextPlayer;
+        autochess::core::OwnedUnitId zeroNextId =
+            autochess::core::InvalidOwnedUnitId;
+        const auto zeroNextResult = autochess::core::MergeService::merge(
+            zeroNextPlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, zeroNextId);
+        expectUnchanged(
+            zeroNextResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            zeroNextPlayer,
+            zeroNextBefore,
+            zeroNextId,
+            autochess::core::InvalidOwnedUnitId,
+            "MergeService rejects an invalid zero next ID");
+
+        // 此代码段验证下一持久 ID 不能与活动单位 ID 重复。
+        auto activeDuplicatePlayer = makePlayer(1);
+        const auto activeDuplicateBefore = activeDuplicatePlayer;
+        autochess::core::OwnedUnitId activeDuplicateNext = 1;
+        const auto activeDuplicateResult =
+            autochess::core::MergeService::merge(
+                activeDuplicatePlayer, 1, 2, bundle.gameConfig,
+                bundle.units, *trainingFaction, bundle.factionModifiers,
+                activeDuplicateNext);
+        expectUnchanged(
+            activeDuplicateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            activeDuplicatePlayer,
+            activeDuplicateBefore,
+            activeDuplicateNext,
+            1,
+            "MergeService rejects a next ID used by an active unit");
+
+        // 此代码段验证下一持久 ID 不能与死亡单位 ID 重复。
+        auto deadDuplicatePlayer = makePlayer(1);
+        deadDuplicatePlayer.deadUnits.push_back(
+            autochess::core::OwnedUnit{
+                3,
+                {"training_guard", 1},
+                autochess::core::MapSide::A});
+        const auto deadDuplicateBefore = deadDuplicatePlayer;
+        autochess::core::OwnedUnitId deadDuplicateNext = 3;
+        const auto deadDuplicateResult =
+            autochess::core::MergeService::merge(
+                deadDuplicatePlayer, 1, 2, bundle.gameConfig,
+                bundle.units, *trainingFaction, bundle.factionModifiers,
+                deadDuplicateNext);
+        expectUnchanged(
+            deadDuplicateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            deadDuplicatePlayer,
+            deadDuplicateBefore,
+            deadDuplicateNext,
+            3,
+            "MergeService rejects a next ID used by a dead unit");
+
+        // 此代码段验证最大整数持久 ID 不会因递增而溢出。
+        auto maximumNextPlayer = makePlayer(1);
+        const auto maximumNextBefore = maximumNextPlayer;
+        autochess::core::OwnedUnitId maximumNextId =
+            std::numeric_limits<autochess::core::OwnedUnitId>::max();
+        const auto maximumNextResult = autochess::core::MergeService::merge(
+            maximumNextPlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, maximumNextId);
+        expectUnchanged(
+            maximumNextResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            maximumNextPlayer,
+            maximumNextBefore,
+            maximumNextId,
+            std::numeric_limits<autochess::core::OwnedUnitId>::max(),
+            "MergeService rejects the maximum next ID");
+
+        // 此代码段验证初始玩家状态不一致时合成入口保持原子失败。
+        auto invalidStatePlayer = makePlayer(1);
+        invalidStatePlayer.reserveSlots[2] = 1;
+        const auto invalidStateBefore = invalidStatePlayer;
+        autochess::core::OwnedUnitId invalidStateNext = 3;
+        const auto invalidStateResult = autochess::core::MergeService::merge(
+            invalidStatePlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, invalidStateNext);
+        expectUnchanged(
+            invalidStateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            invalidStatePlayer,
+            invalidStateBefore,
+            invalidStateNext,
+            3,
+            "MergeService rejects an invalid player state atomically");
+
+        // 此代码段验证超出零到一范围的合成返还比例会被拒绝。
+        auto invalidRatioConfig = bundle.gameConfig;
+        invalidRatioConfig.mergeRefundRatio = 1.5;
+        auto invalidRatioPlayer = makePlayer(1);
+        const auto invalidRatioBefore = invalidRatioPlayer;
+        autochess::core::OwnedUnitId invalidRatioNext = 3;
+        const auto invalidRatioResult = autochess::core::MergeService::merge(
+            invalidRatioPlayer, 1, 2, invalidRatioConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, invalidRatioNext);
+        expectUnchanged(
+            invalidRatioResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            invalidRatioPlayer,
+            invalidRatioBefore,
+            invalidRatioNext,
+            3,
+            "MergeService rejects an invalid merge refund ratio");
+
+        // 此代码段验证无效的单位一级价格不会产生合成返还。
+        auto invalidPriceUnits = bundle.units;
+        invalidPriceUnits.front().price = 0;
+        auto invalidPricePlayer = makePlayer(1);
+        const auto invalidPriceBefore = invalidPricePlayer;
+        autochess::core::OwnedUnitId invalidPriceNext = 3;
+        const auto invalidPriceResult = autochess::core::MergeService::merge(
+            invalidPricePlayer, 1, 2, bundle.gameConfig, invalidPriceUnits,
+            *trainingFaction, bundle.factionModifiers, invalidPriceNext);
+        expectUnchanged(
+            invalidPriceResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            invalidPricePlayer,
+            invalidPriceBefore,
+            invalidPriceNext,
+            3,
+            "MergeService rejects an invalid unit price");
+
+        // 此代码段验证合成返还导致金币整数溢出时状态保持不变。
+        auto goldOverflowPlayer = makePlayer(1);
+        goldOverflowPlayer.gold = std::numeric_limits<int>::max();
+        const auto goldOverflowBefore = goldOverflowPlayer;
+        autochess::core::OwnedUnitId goldOverflowNext = 3;
+        const auto goldOverflowResult = autochess::core::MergeService::merge(
+            goldOverflowPlayer, 1, 2, bundle.gameConfig, bundle.units,
+            *trainingFaction, bundle.factionModifiers, goldOverflowNext);
+        expectUnchanged(
+            goldOverflowResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            goldOverflowPlayer,
+            goldOverflowBefore,
+            goldOverflowNext,
+            3,
+            "MergeService rejects a gold overflow atomically");
+
+        // 此返回值汇总全部合成成功与失败案例的断言结果。
+        return runner.failureCount();
+    }
+
     // 此函数检查配置错误是否包含预期类别、路径、行号和中文消息。
     bool hasExpectedConfigError(
         const autochess::core::ConfigError& error,
@@ -2560,6 +3156,16 @@ int main()
     }
 
     std::cout << "[PASS] Deployment service test suite\n";
+
+    // 此代码段运行合成服务测试并将任一失败转换为非零退出码。
+    const int mergeServiceFailures = runMergeServiceTests();
+    assert(mergeServiceFailures == 0);
+    if (mergeServiceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Merge service test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);
