@@ -48,8 +48,10 @@ add_library(
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
     src/core/config/ConfigValueReader.hpp
+    src/core/economy/EconomyTypes.hpp
     src/core/map/MapTypes.hpp
     src/core/model/Definitions.hpp
+    src/core/model/PlayerTypes.hpp
 )
 
 target_include_directories(

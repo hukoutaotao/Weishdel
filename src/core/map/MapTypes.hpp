@@ -32,6 +32,18 @@ namespace autochess::core
         return !(left == right);
     }
 
+    inline bool operator<(
+        const GridPosition& left,
+        const GridPosition& right) noexcept
+    {
+        if (left.y != right.y)
+        {
+            return left.y < right.y;
+        }
+
+        return left.x < right.x;
+    }
+
     struct Route
     {
         std::string id;

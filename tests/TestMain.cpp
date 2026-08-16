@@ -5,8 +5,10 @@
 #include "core/config/GameConfigLoader.hpp"
 #include "core/config/MapConfigLoader.hpp"
 #include "core/config/ConfigParser.hpp"
+#include "core/economy/EconomyTypes.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
+#include "core/model/PlayerTypes.hpp"
 
 #include <cassert>
 #include <filesystem>
@@ -57,6 +59,100 @@ namespace
             && error.category
                 == autochess::core::ConfigErrorCategory::MissingField
             && error.line == 2;
+    }
+
+    // 此函数验证持久单位、备用区和部署映射可以表达玩家的基础状态。
+    bool runPlayerTypesSmokeTest()
+    {
+        const autochess::core::UnitIdentity firstIdentity{
+            "training_guard", 1};
+        const autochess::core::UnitIdentity sameIdentity{
+            "training_guard", 1};
+        const autochess::core::UnitIdentity differentType{
+            "training_archer", 1};
+        const autochess::core::UnitIdentity differentLevel{
+            "training_guard", 2};
+
+        const autochess::core::OwnedUnit reserveUnit{
+            1, firstIdentity, autochess::core::MapSide::A};
+        const autochess::core::OwnedUnit firstDeployedUnit{
+            2, firstIdentity, autochess::core::MapSide::A};
+        const autochess::core::OwnedUnit secondDeployedUnit{
+            3, firstIdentity, autochess::core::MapSide::A};
+        const autochess::core::OwnedUnit deadUnit{
+            4, differentLevel, autochess::core::MapSide::A};
+
+        autochess::core::PlayerState player;
+        player.side = autochess::core::MapSide::A;
+        player.factionId = "training_team";
+        player.gold = 10;
+        player.guardValue = 100;
+        player.activeUnits = {
+            reserveUnit, firstDeployedUnit, secondDeployedUnit};
+        player.deadUnits.push_back(deadUnit);
+        player.reserveSlots.resize(8);
+        player.reserveSlots[0] = reserveUnit.id;
+
+        const auto firstDeployment = player.deployments.emplace(
+            autochess::core::GridPosition{1, 2}, firstDeployedUnit.id);
+        const auto secondDeployment = player.deployments.emplace(
+            autochess::core::GridPosition{2, 1}, secondDeployedUnit.id);
+        const auto duplicateDeployment = player.deployments.emplace(
+            autochess::core::GridPosition{1, 2}, reserveUnit.id);
+
+        return firstIdentity == sameIdentity
+            && !(firstIdentity == differentType)
+            && !(firstIdentity == differentLevel)
+            && reserveUnit.id == 1
+            && reserveUnit.identity == firstIdentity
+            && reserveUnit.ownerSide == autochess::core::MapSide::A
+            && player.side == autochess::core::MapSide::A
+            && player.factionId == "training_team"
+            && player.gold == 10
+            && player.guardValue == 100
+            && player.activeUnits.size() == 3
+            && player.deadUnits.size() == 1
+            && player.reserveSlots.size() == 8
+            && player.reserveSlots[0].has_value()
+            && player.reserveSlots[0].value() == reserveUnit.id
+            && !player.reserveSlots[1].has_value()
+            && firstDeployment.second
+            && secondDeployment.second
+            && !duplicateDeployment.second
+            && player.deployments.size() == 2
+            && player.deployments.at({1, 2}) == firstDeployedUnit.id
+            && player.deployments.at({2, 1}) == secondDeployedUnit.id;
+    }
+
+    // 此函数验证商店槽位和命令结果能够保存准备阶段的公共数据。
+    bool runEconomyTypesSmokeTest()
+    {
+        autochess::core::ShopState shop;
+        shop.offers.resize(6);
+        shop.offers[0] = autochess::core::ShopOffer{
+            "training_guard", 3};
+
+        const autochess::core::CommandResult successResult{
+            true,
+            autochess::core::CommandErrorCode::None,
+            "操作成功"};
+        const autochess::core::CommandResult failureResult{
+            false,
+            autochess::core::CommandErrorCode::InsufficientGold,
+            "金币不足"};
+
+        return shop.offers.size() == 6
+            && shop.offers[0].has_value()
+            && shop.offers[0]->unitId == "training_guard"
+            && shop.offers[0]->displayedPrice == 3
+            && !shop.offers[1].has_value()
+            && successResult.success
+            && successResult.errorCode
+                == autochess::core::CommandErrorCode::None
+            && !failureResult.success
+            && failureResult.errorCode
+                == autochess::core::CommandErrorCode::InsufficientGold
+            && !failureResult.message.empty();
     }
 
     // 此测试运行器统一输出测试结果并累计失败数量。
@@ -848,6 +944,30 @@ int main()
     }
 
     std::cout << "[PASS] AutoChessCore data types smoke test\n";
+
+    const bool playerTypesPassed = runPlayerTypesSmokeTest();
+
+    assert(playerTypesPassed);
+
+    if (!playerTypesPassed)
+    {
+        std::cerr << "[FAIL] Player state data types smoke test\n";
+        return 1;
+    }
+
+    std::cout << "[PASS] Player state data types smoke test\n";
+
+    const bool economyTypesPassed = runEconomyTypesSmokeTest();
+
+    assert(economyTypesPassed);
+
+    if (!economyTypesPassed)
+    {
+        std::cerr << "[FAIL] Economy data types smoke test\n";
+        return 1;
+    }
+
+    std::cout << "[PASS] Economy data types smoke test\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);
