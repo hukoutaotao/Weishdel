@@ -5,6 +5,7 @@
 #include "core/config/GameConfigLoader.hpp"
 #include "core/config/MapConfigLoader.hpp"
 #include "core/config/ConfigParser.hpp"
+#include "core/economy/DeploymentService.hpp"
 #include "core/economy/EconomyTypes.hpp"
 #include "core/economy/PriceRules.hpp"
 #include "core/economy/ShopService.hpp"
@@ -1337,6 +1338,395 @@ namespace
         return runner.failureCount();
     }
 
+    int runDeploymentServiceTests()
+    {
+        TestRunner runner;
+
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(
+            loaded,
+            "DeploymentService loads the formal configuration bundle");
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        const autochess::core::MapDefinition* map = nullptr;
+        const autochess::core::FactionDefinition* trainingFaction = nullptr;
+        for (const autochess::core::MapDefinition& candidate : bundle.maps)
+        {
+            if (candidate.id == "map_01")
+            {
+                map = &candidate;
+                break;
+            }
+        }
+        for (const autochess::core::FactionDefinition& candidate : bundle.factions)
+        {
+            if (candidate.id == "training_team")
+            {
+                trainingFaction = &candidate;
+                break;
+            }
+        }
+
+        runner.check(
+            map != nullptr && trainingFaction != nullptr,
+            "DeploymentService finds map_01 and the training faction");
+        if (map == nullptr || trainingFaction == nullptr)
+        {
+            return runner.failureCount();
+        }
+
+        const auto makePlayer = [&]()
+        {
+            autochess::core::PlayerState player =
+                autochess::core::PlayerStateService::createInitial(
+                    autochess::core::MapSide::A,
+                    bundle.gameConfig,
+                    *trainingFaction);
+            const autochess::core::UnitIdentity identity{
+                "training_guard", 1};
+            player.activeUnits = {
+                autochess::core::OwnedUnit{
+                    1, identity, autochess::core::MapSide::A},
+                autochess::core::OwnedUnit{
+                    2, identity, autochess::core::MapSide::A}};
+            player.reserveSlots[0] = 1;
+            player.reserveSlots[1] = 2;
+            return player;
+        };
+
+        auto player = makePlayer();
+        std::string validationError;
+        runner.check(
+            autochess::core::PlayerStateService::validate(
+                player,
+                validationError),
+            "DeploymentService test player starts in a valid state");
+
+        const auto deployResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                player,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        runner.check(
+            deployResult.success
+                && deployResult.errorCode
+                    == autochess::core::CommandErrorCode::None
+                && !deployResult.message.empty()
+                && !player.reserveSlots[0].has_value()
+                && player.deployments.at({1, 2}) == 1
+                && player.deployments.size() == 1
+                && autochess::core::PlayerStateService::validate(
+                    player,
+                    validationError),
+            "DeploymentService deploys a reserve unit to a legal start");
+
+        auto movedPlayer = player;
+        const auto moveResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                movedPlayer,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 4});
+        runner.check(
+            moveResult.success
+                && movedPlayer.deployments.find({1, 2})
+                    == movedPlayer.deployments.end()
+                && movedPlayer.deployments.at({1, 4}) == 1
+                && movedPlayer.deployments.size() == 1,
+            "DeploymentService moves a deployed unit to an empty start");
+
+        auto reservePlayer = movedPlayer;
+        const auto reserveResult =
+            autochess::core::DeploymentService::moveToReserve(
+                reservePlayer,
+                1,
+                2);
+        runner.check(
+            reserveResult.success
+                && reservePlayer.deployments.find({1, 4})
+                    == reservePlayer.deployments.end()
+                && reservePlayer.reserveSlots[2].has_value()
+                && reservePlayer.reserveSlots[2].value() == 1
+                && reservePlayer.deployments.empty()
+                && autochess::core::PlayerStateService::validate(
+                    reservePlayer,
+                    validationError),
+            "DeploymentService withdraws a deployed unit to the reserve");
+
+        auto reserveMovePlayer = makePlayer();
+        const auto reserveMoveResult =
+            autochess::core::DeploymentService::moveToReserve(
+                reserveMovePlayer,
+                2,
+                3);
+        runner.check(
+            reserveMoveResult.success
+                && !reserveMovePlayer.reserveSlots[1].has_value()
+                && reserveMovePlayer.reserveSlots[3].has_value()
+                && reserveMovePlayer.reserveSlots[3].value() == 2
+                && reserveMovePlayer.activeUnits.size() == 2
+                && autochess::core::PlayerStateService::validate(
+                    reserveMovePlayer,
+                    validationError),
+            "DeploymentService moves a reserve unit between reserve slots");
+
+        const auto expectUnchanged = [&runner](
+            const autochess::core::CommandResult& result,
+            const autochess::core::CommandErrorCode expectedCode,
+            const autochess::core::PlayerState& actual,
+            const autochess::core::PlayerState& before,
+            const std::string& testName)
+        {
+            runner.check(
+                !result.success
+                    && result.errorCode == expectedCode
+                    && !result.message.empty()
+                    && playersAreEqual(actual, before),
+                testName);
+        };
+
+        const auto sameDeploymentBefore = player;
+        const auto sameDeploymentResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                player,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        expectUnchanged(
+            sameDeploymentResult,
+            autochess::core::CommandErrorCode::InvalidTarget,
+            player,
+            sameDeploymentBefore,
+            "DeploymentService rejects the unit's current deployment start");
+
+        auto sameReservePlayer = makePlayer();
+        const auto sameReserveBefore = sameReservePlayer;
+        const auto sameReserveResult =
+            autochess::core::DeploymentService::moveToReserve(
+                sameReservePlayer,
+                1,
+                0);
+        expectUnchanged(
+            sameReserveResult,
+            autochess::core::CommandErrorCode::InvalidTarget,
+            sameReservePlayer,
+            sameReserveBefore,
+            "DeploymentService rejects the unit's current reserve slot");
+
+        auto mismatchedFaction = *trainingFaction;
+        mismatchedFaction.id = "other_team";
+        auto mismatchedFactionPlayer = makePlayer();
+        const auto mismatchedFactionBefore = mismatchedFactionPlayer;
+        const auto mismatchedFactionResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                mismatchedFactionPlayer,
+                *map,
+                mismatchedFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        expectUnchanged(
+            mismatchedFactionResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            mismatchedFactionPlayer,
+            mismatchedFactionBefore,
+            "DeploymentService rejects a mismatched faction");
+
+        auto invalidFaction = *trainingFaction;
+        invalidFaction.maxDeployed = -1;
+        auto invalidFactionPlayer = makePlayer();
+        const auto invalidFactionBefore = invalidFactionPlayer;
+        const auto invalidFactionResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                invalidFactionPlayer,
+                *map,
+                invalidFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        expectUnchanged(
+            invalidFactionResult,
+            autochess::core::CommandErrorCode::InvalidConfiguration,
+            invalidFactionPlayer,
+            invalidFactionBefore,
+            "DeploymentService rejects a negative deployment limit");
+
+        const std::vector<autochess::core::GridPosition> invalidTargets = {
+            {9, 2},
+            {2, 2},
+            {1, 3},
+            {4, 2}};
+        const std::vector<std::string> invalidTargetNames = {
+            "DeploymentService rejects the opposing deployment start",
+            "DeploymentService rejects an ordinary route cell",
+            "DeploymentService rejects a guard cell",
+            "DeploymentService rejects an obstacle cell"};
+        for (std::size_t index = 0; index < invalidTargets.size(); ++index)
+        {
+            auto invalidTargetPlayer = makePlayer();
+            const auto before = invalidTargetPlayer;
+            const auto result =
+                autochess::core::DeploymentService::moveToDeployment(
+                    invalidTargetPlayer,
+                    *map,
+                    *trainingFaction,
+                    1,
+                    invalidTargets[index]);
+            expectUnchanged(
+                result,
+                autochess::core::CommandErrorCode::InvalidTarget,
+                invalidTargetPlayer,
+                before,
+                invalidTargetNames[index]);
+        }
+
+        auto occupiedPlayer = makePlayer();
+        const auto firstOccupiedDeployment =
+            autochess::core::DeploymentService::moveToDeployment(
+                occupiedPlayer,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        runner.check(
+            firstOccupiedDeployment.success,
+            "DeploymentService prepares an occupied deployment test");
+        const auto occupiedBefore = occupiedPlayer;
+        const auto occupiedResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                occupiedPlayer,
+                *map,
+                *trainingFaction,
+                2,
+                autochess::core::GridPosition{1, 2});
+        expectUnchanged(
+            occupiedResult,
+            autochess::core::CommandErrorCode::TargetOccupied,
+            occupiedPlayer,
+            occupiedBefore,
+            "DeploymentService rejects an occupied deployment start");
+
+        auto limitedFaction = *trainingFaction;
+        limitedFaction.maxDeployed = 1;
+        auto limitedPlayer = makePlayer();
+        const auto firstLimitedDeployment =
+            autochess::core::DeploymentService::moveToDeployment(
+                limitedPlayer,
+                *map,
+                limitedFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        runner.check(
+            firstLimitedDeployment.success,
+            "DeploymentService prepares a deployment-limit test");
+        const auto limitedBefore = limitedPlayer;
+        const auto limitedResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                limitedPlayer,
+                *map,
+                limitedFaction,
+                2,
+                autochess::core::GridPosition{1, 4});
+        expectUnchanged(
+            limitedResult,
+            autochess::core::CommandErrorCode::DeploymentLimitReached,
+            limitedPlayer,
+            limitedBefore,
+            "DeploymentService enforces the faction deployment limit");
+
+        auto missingUnitPlayer = makePlayer();
+        const auto missingUnitBefore = missingUnitPlayer;
+        const auto missingUnitResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                missingUnitPlayer,
+                *map,
+                *trainingFaction,
+                99,
+                autochess::core::GridPosition{1, 2});
+        expectUnchanged(
+            missingUnitResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            missingUnitPlayer,
+            missingUnitBefore,
+            "DeploymentService rejects a missing unit ID");
+
+        auto invalidReservePlayer = makePlayer();
+        const auto invalidReserveBefore = invalidReservePlayer;
+        const auto invalidReserveResult =
+            autochess::core::DeploymentService::moveToReserve(
+                invalidReservePlayer,
+                1,
+                invalidReservePlayer.reserveSlots.size());
+        expectUnchanged(
+            invalidReserveResult,
+            autochess::core::CommandErrorCode::InvalidTarget,
+            invalidReservePlayer,
+            invalidReserveBefore,
+            "DeploymentService rejects an out-of-range reserve slot");
+
+        auto occupiedReservePlayer = makePlayer();
+        const auto occupiedReserveBefore = occupiedReservePlayer;
+        const auto occupiedReserveResult =
+            autochess::core::DeploymentService::moveToReserve(
+                occupiedReservePlayer,
+                2,
+                0);
+        expectUnchanged(
+            occupiedReserveResult,
+            autochess::core::CommandErrorCode::TargetOccupied,
+            occupiedReservePlayer,
+            occupiedReserveBefore,
+            "DeploymentService rejects an occupied reserve slot");
+
+        auto invalidStatePlayer = makePlayer();
+        invalidStatePlayer.reserveSlots[1] = 1;
+        const auto invalidStateBefore = invalidStatePlayer;
+        const auto invalidStateResult =
+            autochess::core::DeploymentService::moveToDeployment(
+                invalidStatePlayer,
+                *map,
+                *trainingFaction,
+                1,
+                autochess::core::GridPosition{1, 2});
+        expectUnchanged(
+            invalidStateResult,
+            autochess::core::CommandErrorCode::InconsistentState,
+            invalidStatePlayer,
+            invalidStateBefore,
+            "DeploymentService rejects an invalid player state atomically");
+
+        auto deadPlayer = makePlayer();
+        deadPlayer.deadUnits.push_back(
+            autochess::core::OwnedUnit{
+                3,
+                {"training_guard", 1},
+                autochess::core::MapSide::A});
+        const auto deadBefore = deadPlayer;
+        const auto deadResult =
+            autochess::core::DeploymentService::moveToReserve(
+                deadPlayer,
+                3,
+                2);
+        expectUnchanged(
+            deadResult,
+            autochess::core::CommandErrorCode::UnitNotFound,
+            deadPlayer,
+            deadBefore,
+            "DeploymentService does not move a dead unit");
+
+        return runner.failureCount();
+    }
+
     // 此函数检查配置错误是否包含预期类别、路径、行号和中文消息。
     bool hasExpectedConfigError(
         const autochess::core::ConfigError& error,
@@ -2161,6 +2551,15 @@ int main()
     }
 
     std::cout << "[PASS] PlayerState service test suite\n";
+
+    const int deploymentServiceFailures = runDeploymentServiceTests();
+    assert(deploymentServiceFailures == 0);
+    if (deploymentServiceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Deployment service test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);
