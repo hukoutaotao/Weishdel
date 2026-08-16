@@ -6,6 +6,7 @@
 #include "core/config/MapConfigLoader.hpp"
 #include "core/config/ConfigParser.hpp"
 #include "core/economy/EconomyTypes.hpp"
+#include "core/economy/PriceRules.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
 #include "core/model/PlayerStateService.hpp"
@@ -180,6 +181,210 @@ namespace
     private:
         int failureCount_ = 0;
     };
+
+    int runPriceRulesTests()
+    {
+        TestRunner runner;
+
+        autochess::core::UnitDefinition unit;
+        unit.id = "price_unit";
+        unit.price = 3;
+
+        autochess::core::FactionDefinition faction;
+        faction.id = "price_team";
+        faction.priceMultiplier = 1.0;
+
+        const std::vector<autochess::core::FactionModifierDefinition>
+            noModifiers;
+        const auto basePrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unit, faction, noModifiers);
+        runner.check(
+            basePrice.success
+                && basePrice.amount == 3
+                && basePrice.errorCode
+                    == autochess::core::PriceErrorCode::None
+                && basePrice.message.empty(),
+            "PriceRules calculates the unmodified base price");
+
+        faction.priceMultiplier = 1.5;
+        const auto factionPrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unit, faction, noModifiers);
+        runner.check(
+            factionPrice.success && factionPrice.amount == 5,
+            "PriceRules applies the faction price multiplier");
+
+        faction.priceMultiplier = 1.0;
+        const std::vector<autochess::core::FactionModifierDefinition>
+            matchingModifiers{
+                {"price_add", "price_team", "price_unit",
+                    autochess::core::FactionAttribute::Price,
+                    autochess::core::FactionOperation::Add, 1.0},
+                {"price_multiply", "price_team", "price_unit",
+                    autochess::core::FactionAttribute::Price,
+                    autochess::core::FactionOperation::Multiply, 1.2}};
+        const auto adjustedPrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unit, faction, matchingModifiers);
+        runner.check(
+            adjustedPrice.success && adjustedPrice.amount == 5,
+            "PriceRules applies add and multiply price modifiers");
+
+        const std::vector<autochess::core::FactionModifierDefinition>
+            unrelatedModifiers{
+                {"other_faction", "other_team", "price_unit",
+                    autochess::core::FactionAttribute::Price,
+                    autochess::core::FactionOperation::Add, 100.0},
+                {"other_unit", "price_team", "other_unit",
+                    autochess::core::FactionAttribute::Price,
+                    autochess::core::FactionOperation::Multiply, 2.0},
+                {"other_attribute", "price_team", "price_unit",
+                    autochess::core::FactionAttribute::AttackPower,
+                    autochess::core::FactionOperation::Add, 100.0}};
+        const auto filteredPrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unit, faction, unrelatedModifiers);
+        runner.check(
+            filteredPrice.success && filteredPrice.amount == 3,
+            "PriceRules ignores unrelated modifiers");
+
+        const auto levelOnePrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unit, faction, noModifiers);
+        const auto levelTwoOwnedUnit = autochess::core::OwnedUnit{
+            2,
+            {unit.id, 2},
+            autochess::core::MapSide::A};
+        const auto levelThreeOwnedUnit = autochess::core::OwnedUnit{
+            3,
+            {unit.id, 3},
+            autochess::core::MapSide::A};
+        runner.check(
+            levelOnePrice.success
+                && levelTwoOwnedUnit.identity.unitId == unit.id
+                && levelThreeOwnedUnit.identity.unitId == unit.id
+                && levelOnePrice.amount == 3,
+            "PriceRules keeps the price independent of owned unit level");
+
+        const auto mergeRefund =
+            autochess::core::PriceRules::calculateRatioAmount(3, 0.40);
+        const auto sellRefund =
+            autochess::core::PriceRules::calculateRatioAmount(3, 0.75);
+        const auto reviveCost =
+            autochess::core::PriceRules::calculateRatioAmount(3, 0.50);
+        runner.check(
+            mergeRefund.success && mergeRefund.amount == 1
+                && sellRefund.success && sellRefund.amount == 2
+                && reviveCost.success && reviveCost.amount == 2,
+            "PriceRules calculates merge, sell, and revive amounts");
+
+        const auto halfAmount =
+            autochess::core::PriceRules::calculateRatioAmount(3, 0.5);
+        runner.check(
+            halfAmount.success && halfAmount.amount == 2,
+            "PriceRules rounds an exact half upward");
+
+        autochess::core::ConfigBundle formalBundle;
+        autochess::core::ConfigError formalLoadError;
+        const bool formalLoaded =
+            autochess::core::ConfigBundleLoader::load(
+                AUTOCHESS_DATA_DIR,
+                formalBundle,
+                formalLoadError);
+        bool formalAmountsAreCorrect = false;
+        if (formalLoaded
+            && formalBundle.units.size() == 1
+            && formalBundle.factions.size() == 1)
+        {
+            const auto formalPrice =
+                autochess::core::PriceRules::calculateLevelOnePrice(
+                    formalBundle.units.front(),
+                    formalBundle.factions.front(),
+                    formalBundle.factionModifiers);
+            const auto formalMergeRefund =
+                autochess::core::PriceRules::calculateRatioAmount(
+                    formalPrice.amount,
+                    formalBundle.gameConfig.mergeRefundRatio);
+            const auto formalSellRefund =
+                autochess::core::PriceRules::calculateRatioAmount(
+                    formalPrice.amount,
+                    formalBundle.gameConfig.sellRatio);
+            const auto formalReviveCost =
+                autochess::core::PriceRules::calculateRatioAmount(
+                    formalPrice.amount,
+                    formalBundle.gameConfig.reviveRatio);
+            formalAmountsAreCorrect = formalPrice.success
+                && formalPrice.amount == 3
+                && formalMergeRefund.success
+                && formalMergeRefund.amount == 1
+                && formalSellRefund.success
+                && formalSellRefund.amount == 2
+                && formalReviveCost.success
+                && formalReviveCost.amount == 2;
+        }
+        runner.check(
+            formalAmountsAreCorrect,
+            "PriceRules uses the formal price and economy ratios");
+
+        auto invalidUnit = unit;
+        invalidUnit.price = 0;
+        const auto invalidBasePrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                invalidUnit, faction, noModifiers);
+        runner.check(
+            !invalidBasePrice.success
+                && invalidBasePrice.errorCode
+                    == autochess::core::PriceErrorCode::InvalidBasePrice
+                && !invalidBasePrice.message.empty(),
+            "PriceRules rejects a non-positive base price");
+
+        const std::vector<autochess::core::FactionModifierDefinition>
+            invalidModifiers{
+                {"invalid_adjustment", "price_team", "price_unit",
+                    autochess::core::FactionAttribute::Price,
+                    autochess::core::FactionOperation::Add, -3.0}};
+        const auto invalidAdjustedPrice =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unit, faction, invalidModifiers);
+        runner.check(
+            !invalidAdjustedPrice.success
+                && invalidAdjustedPrice.errorCode
+                    == autochess::core::PriceErrorCode::InvalidAdjustedPrice
+                && !invalidAdjustedPrice.message.empty(),
+            "PriceRules rejects a non-positive adjusted price");
+
+        const auto invalidRatio =
+            autochess::core::PriceRules::calculateRatioAmount(3, 1.01);
+        runner.check(
+            !invalidRatio.success
+                && invalidRatio.errorCode
+                    == autochess::core::PriceErrorCode::InvalidRatio
+                && !invalidRatio.message.empty(),
+            "PriceRules rejects an out-of-range ratio");
+
+        auto unchangedUnit = unit;
+        auto unchangedFaction = faction;
+        auto unchangedModifiers = invalidModifiers;
+        const auto unchangedResult =
+            autochess::core::PriceRules::calculateLevelOnePrice(
+                unchangedUnit,
+                unchangedFaction,
+                unchangedModifiers);
+        runner.check(
+            !unchangedResult.success
+                && unchangedUnit.id == unit.id
+                && unchangedUnit.price == unit.price
+                && unchangedFaction.id == faction.id
+                && unchangedFaction.priceMultiplier
+                    == faction.priceMultiplier
+                && unchangedModifiers.size() == invalidModifiers.size()
+                && unchangedModifiers[0].value
+                    == invalidModifiers[0].value,
+            "PriceRules failure does not modify its inputs");
+
+        return runner.failureCount();
+    }
 
     bool runPlayerStateServiceTests()
     {
@@ -1206,6 +1411,15 @@ int main()
     }
 
     std::cout << "[PASS] Economy data types smoke test\n";
+
+    const int priceRulesFailures = runPriceRulesTests();
+    assert(priceRulesFailures == 0);
+    if (priceRulesFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Price rules test suite\n";
 
     const int playerStateServiceFailures = runPlayerStateServiceTests();
     assert(playerStateServiceFailures == 0);

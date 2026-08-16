@@ -49,6 +49,8 @@ add_library(
     src/core/config/ConfigValueReader.cpp
     src/core/config/ConfigValueReader.hpp
     src/core/economy/EconomyTypes.hpp
+    src/core/economy/PriceRules.cpp
+    src/core/economy/PriceRules.hpp
     src/core/map/MapTypes.hpp
     src/core/model/Definitions.hpp
     src/core/model/PlayerStateService.cpp
