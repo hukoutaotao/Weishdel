@@ -8,6 +8,7 @@
 #include "core/economy/EconomyTypes.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
+#include "core/model/PlayerStateService.hpp"
 #include "core/model/PlayerTypes.hpp"
 
 #include <cassert>
@@ -179,6 +180,243 @@ namespace
     private:
         int failureCount_ = 0;
     };
+
+    bool runPlayerStateServiceTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(
+            loaded,
+            "PlayerStateService loads the formal configuration bundle");
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        const autochess::core::FactionDefinition* trainingFaction = nullptr;
+        for (const autochess::core::FactionDefinition& faction : bundle.factions)
+        {
+            if (faction.id == "training_team")
+            {
+                trainingFaction = &faction;
+                break;
+            }
+        }
+
+        runner.check(
+            trainingFaction != nullptr,
+            "PlayerStateService finds the training faction");
+        if (trainingFaction == nullptr)
+        {
+            return runner.failureCount();
+        }
+
+        const autochess::core::PlayerState initial =
+            autochess::core::PlayerStateService::createInitial(
+                autochess::core::MapSide::A,
+                bundle.gameConfig,
+                *trainingFaction);
+
+        runner.check(
+            initial.side == autochess::core::MapSide::A
+                && initial.factionId == "training_team"
+                && initial.gold == 10
+                && initial.guardValue == 100
+                && initial.reserveSlots.size() == 8
+                && initial.activeUnits.empty()
+                && initial.deadUnits.empty()
+                && initial.deployments.empty(),
+            "PlayerStateService creates an empty configured player state");
+
+        std::string validationError;
+        runner.check(
+            autochess::core::PlayerStateService::validate(
+                initial,
+                validationError)
+                && validationError.empty(),
+            "PlayerStateService accepts the initial player state");
+
+        const autochess::core::UnitIdentity guardIdentity{
+            "training_guard", 1};
+        const autochess::core::OwnedUnit reserveUnit{
+            1,
+            guardIdentity,
+            autochess::core::MapSide::A};
+        const autochess::core::OwnedUnit firstDeployedUnit{
+            2,
+            guardIdentity,
+            autochess::core::MapSide::A};
+        const autochess::core::OwnedUnit secondDeployedUnit{
+            3,
+            guardIdentity,
+            autochess::core::MapSide::A};
+        const autochess::core::OwnedUnit deadUnit{
+            4,
+            {"training_guard", 2},
+            autochess::core::MapSide::A};
+
+        autochess::core::PlayerState player = initial;
+        player.activeUnits = {
+            reserveUnit,
+            firstDeployedUnit,
+            secondDeployedUnit};
+        player.deadUnits = {deadUnit};
+        player.reserveSlots[0] = reserveUnit.id;
+        player.deployments.emplace(
+            autochess::core::GridPosition{1, 2},
+            firstDeployedUnit.id);
+        player.deployments.emplace(
+            autochess::core::GridPosition{1, 4},
+            secondDeployedUnit.id);
+
+        const autochess::core::OwnedUnit* activeReserveResult =
+            autochess::core::PlayerStateService::findActive(player, 1);
+        const autochess::core::OwnedUnit* activeDeploymentResult =
+            autochess::core::PlayerStateService::findActive(player, 2);
+        const autochess::core::OwnedUnit* deadResult =
+            autochess::core::PlayerStateService::findDead(player, 4);
+        runner.check(
+            activeReserveResult != nullptr
+                && activeReserveResult->id == reserveUnit.id
+                && activeDeploymentResult != nullptr
+                && activeDeploymentResult->id == firstDeployedUnit.id
+                && deadResult != nullptr
+                && deadResult->id == deadUnit.id
+                && autochess::core::PlayerStateService::findActive(player, 4)
+                    == nullptr
+                && autochess::core::PlayerStateService::findDead(player, 1)
+                    == nullptr
+                && autochess::core::PlayerStateService::findActive(player, 99)
+                    == nullptr,
+            "PlayerStateService finds active, dead, and missing units");
+
+        const std::optional<std::size_t> reserveSlot =
+            autochess::core::PlayerStateService::findReserveSlot(player, 1);
+        const std::optional<std::size_t> deployedReserveSlot =
+            autochess::core::PlayerStateService::findReserveSlot(player, 2);
+        const std::optional<std::size_t> deadReserveSlot =
+            autochess::core::PlayerStateService::findReserveSlot(player, 4);
+        runner.check(
+            reserveSlot.has_value()
+                && reserveSlot.value() == 0
+                && !deployedReserveSlot.has_value()
+                && !deadReserveSlot.has_value(),
+            "PlayerStateService finds reserve slots only for reserve units");
+
+        const std::optional<autochess::core::GridPosition> firstPosition =
+            autochess::core::PlayerStateService::findDeploymentPosition(
+                player,
+                2);
+        const std::optional<autochess::core::GridPosition> reservePosition =
+            autochess::core::PlayerStateService::findDeploymentPosition(
+                player,
+                1);
+        runner.check(
+            firstPosition.has_value()
+                && firstPosition.value()
+                    == autochess::core::GridPosition{1, 2}
+                && !reservePosition.has_value(),
+            "PlayerStateService finds deployment positions only for deployed units");
+
+        const std::optional<std::size_t> firstEmptySlot =
+            autochess::core::PlayerStateService::findFirstEmptyReserveSlot(
+                player);
+        runner.check(
+            firstEmptySlot.has_value() && firstEmptySlot.value() == 1,
+            "PlayerStateService finds the first empty reserve slot");
+
+        autochess::core::PlayerState fullReserve = player;
+        for (std::size_t slot = 0; slot < fullReserve.reserveSlots.size(); ++slot)
+        {
+            fullReserve.reserveSlots[slot] =
+                static_cast<autochess::core::OwnedUnitId>(100 + slot);
+        }
+        runner.check(
+            !autochess::core::PlayerStateService::findFirstEmptyReserveSlot(
+                fullReserve)
+                 .has_value(),
+            "PlayerStateService reports no empty slot when reserve is full");
+
+        runner.check(
+            autochess::core::PlayerStateService::activeCount(player) == 3
+                && autochess::core::PlayerStateService::deployedCount(player)
+                    == 2,
+            "PlayerStateService counts active and deployed units");
+
+        runner.check(
+            autochess::core::PlayerStateService::validate(
+                player,
+                validationError)
+                && validationError.empty(),
+            "PlayerStateService accepts a consistent mixed player state");
+
+        autochess::core::PlayerState duplicateActive = player;
+        duplicateActive.activeUnits.push_back(reserveUnit);
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                duplicateActive,
+                validationError)
+                && !validationError.empty(),
+            "PlayerStateService rejects duplicate active IDs");
+
+        autochess::core::PlayerState duplicateLocation = player;
+        duplicateLocation.reserveSlots[1] = firstDeployedUnit.id;
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                duplicateLocation,
+                validationError),
+            "PlayerStateService rejects a unit in reserve and deployment");
+
+        autochess::core::PlayerState missingActiveReference = player;
+        missingActiveReference.deployments.emplace(
+            autochess::core::GridPosition{2, 2},
+            99);
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                missingActiveReference,
+                validationError),
+            "PlayerStateService rejects an unknown deployment ID");
+
+        autochess::core::PlayerState deadInReserve = player;
+        deadInReserve.reserveSlots[1] = deadUnit.id;
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                deadInReserve,
+                validationError),
+            "PlayerStateService rejects a dead unit in reserve");
+
+        autochess::core::PlayerState wrongOwner = player;
+        wrongOwner.activeUnits[0].ownerSide = autochess::core::MapSide::B;
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                wrongOwner,
+                validationError),
+            "PlayerStateService rejects an active unit with wrong owner");
+
+        autochess::core::PlayerState overCapacity = player;
+        overCapacity.reserveSlots.resize(2);
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                overCapacity,
+                validationError),
+            "PlayerStateService rejects active units over capacity");
+
+        autochess::core::PlayerState invalidId = player;
+        invalidId.activeUnits[0].id =
+            autochess::core::InvalidOwnedUnitId;
+        runner.check(
+            !autochess::core::PlayerStateService::validate(
+                invalidId,
+                validationError),
+            "PlayerStateService rejects an invalid persistent ID");
+
+        return runner.failureCount();
+    }
 
     // 此函数检查配置错误是否包含预期类别、路径、行号和中文消息。
     bool hasExpectedConfigError(
@@ -968,6 +1206,15 @@ int main()
     }
 
     std::cout << "[PASS] Economy data types smoke test\n";
+
+    const int playerStateServiceFailures = runPlayerStateServiceTests();
+    assert(playerStateServiceFailures == 0);
+    if (playerStateServiceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] PlayerState service test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);

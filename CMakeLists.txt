@@ -51,6 +51,8 @@ add_library(
     src/core/economy/EconomyTypes.hpp
     src/core/map/MapTypes.hpp
     src/core/model/Definitions.hpp
+    src/core/model/PlayerStateService.cpp
+    src/core/model/PlayerStateService.hpp
     src/core/model/PlayerTypes.hpp
 )
 
