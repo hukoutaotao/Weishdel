@@ -34,6 +34,9 @@ add_library(
     src/core/Core.cpp
     src/core/Core.hpp
     src/core/config/ConfigError.hpp
+    # 将整包配置加载入口编译进纯 C++ 核心静态库。
+    src/core/config/ConfigBundleLoader.cpp
+    src/core/config/ConfigBundleLoader.hpp
     # 将定义加载器和通用字段读取工具编译进纯 C++ 核心静态库。
     src/core/config/DefinitionConfigLoader.cpp
     src/core/config/DefinitionConfigLoader.hpp

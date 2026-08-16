@@ -1,4 +1,5 @@
 #include "core/Core.hpp"
+#include "core/config/ConfigBundleLoader.hpp"
 #include "core/config/ConfigError.hpp"
 #include "core/config/DefinitionConfigLoader.hpp"
 #include "core/config/GameConfigLoader.hpp"
@@ -568,6 +569,74 @@ namespace
                 << '\n';
         }
 
+        // 此代码段加载第二张正式地图并在失败时输出带路径和行号的诊断信息。
+        autochess::core::MapDefinition variedMap;
+        autochess::core::ConfigError variedMapError;
+        const std::filesystem::path variedMapPath =
+            dataDirectory / "maps" / "map_02.map";
+        const bool variedMapLoaded = autochess::core::MapConfigLoader::load(
+            variedMapPath, variedMap, variedMapError);
+        if (!variedMapLoaded)
+        {
+            std::cerr
+                << autochess::core::formatConfigError(variedMapError)
+                << '\n';
+        }
+
+        // 此代码段统计第二张地图双方路线数量以及最短和最长路线长度。
+        int variedRouteACount = 0;
+        int variedRouteBCount = 0;
+        std::size_t shortestRouteLength = 0;
+        std::size_t longestRouteLength = 0;
+        if (variedMapLoaded && !variedMap.routes.empty())
+        {
+            shortestRouteLength = variedMap.routes.front().points.size();
+            longestRouteLength = shortestRouteLength;
+            for (const autochess::core::Route& route : variedMap.routes)
+            {
+                variedRouteACount +=
+                    route.side == autochess::core::MapSide::A ? 1 : 0;
+                variedRouteBCount +=
+                    route.side == autochess::core::MapSide::B ? 1 : 0;
+                if (route.points.size() < shortestRouteLength)
+                {
+                    shortestRouteLength = route.points.size();
+                }
+                if (route.points.size() > longestRouteLength)
+                {
+                    longestRouteLength = route.points.size();
+                }
+            }
+        }
+
+        // 此代码段核对第二张地图尺寸、部署路线数量和三档路线长度差异。
+        const bool variedMapValid = variedMapLoaded
+            && variedMap.id == "map_02"
+            && variedMap.name == "多路线峡谷"
+            && variedMap.width == 15
+            && variedMap.height == 9
+            && variedMap.gridRows.size() == 9
+            && variedMap.routes.size() == 6
+            && variedRouteACount == 3
+            && variedRouteBCount == 3
+            && shortestRouteLength == 12
+            && longestRouteLength == 21;
+        runner.check(
+            variedMapValid,
+            "MapConfigLoader loads map_02 with varied route lengths");
+
+        // 此代码段打印第二张地图的路线长度摘要供人工复核。
+        if (variedMapLoaded)
+        {
+            std::cout
+                << "[INFO] Map summary: id=" << variedMap.id
+                << ", size=" << variedMap.width << 'x' << variedMap.height
+                << ", routes=" << variedMap.routes.size()
+                << ", shortest=" << shortestRouteLength
+                << ", longest=" << longestRouteLength
+                << '\n';
+        }
+
         // 此代码段确认文件打开失败时不会覆盖调用方原有地图对象。
         runner.check(
             loadMapMustFailWithoutOverwrite(
@@ -635,6 +704,112 @@ namespace
                 autochess::core::ConfigErrorCategory::MapValidation,
                 16),
             "MapConfigLoader requires routes to end at the enemy guard");
+
+        return runner.failureCount();
+    }
+
+    // 此函数验证统一入口能原子地加载全部正式配置并输出可复核摘要。
+    int runConfigBundleLoaderTests()
+    {
+        // 此代码段准备正式数据目录、非法目录和测试结果累计器。
+        const std::filesystem::path dataDirectory = AUTOCHESS_DATA_DIR;
+        const std::filesystem::path testDataDirectory =
+            AUTOCHESS_TEST_DATA_DIR;
+        TestRunner runner;
+
+        // 此代码段通过统一入口加载完整配置并在失败时输出详细诊断。
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError error;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            dataDirectory, bundle, error);
+        if (!loaded)
+        {
+            std::cerr << autochess::core::formatConfigError(error) << '\n';
+        }
+
+        // 此代码段核对整包中的全局参数、定义数量和固定地图顺序。
+        const bool validBundle = loaded
+            && bundle.gameConfig.maxRounds == 3
+            && bundle.skills.size() == 1
+            && bundle.units.size() == 1
+            && bundle.factions.size() == 1
+            && bundle.factionModifiers.size() == 1
+            && bundle.maps.size() == 2
+            && bundle.maps[0].id == "map_01"
+            && bundle.maps[1].id == "map_02";
+        runner.check(
+            validBundle,
+            "ConfigBundleLoader loads all definitions and two maps in order");
+
+        // 此代码段打印整包定义数量供人工确认全部依赖均已加载。
+        if (loaded)
+        {
+            std::cout
+                << "[INFO] Config bundle summary: skills="
+                << bundle.skills.size()
+                << ", units=" << bundle.units.size()
+                << ", factions=" << bundle.factions.size()
+                << ", modifiers=" << bundle.factionModifiers.size()
+                << ", maps=" << bundle.maps.size()
+                << '\n';
+        }
+
+        // 此代码段为每张已加载地图计算并打印最短和最长路线长度。
+        for (const autochess::core::MapDefinition& loadedMap : bundle.maps)
+        {
+            std::size_t shortestLength = 0;
+            std::size_t longestLength = 0;
+            if (!loadedMap.routes.empty())
+            {
+                shortestLength = loadedMap.routes.front().points.size();
+                longestLength = shortestLength;
+                for (const autochess::core::Route& route : loadedMap.routes)
+                {
+                    if (route.points.size() < shortestLength)
+                    {
+                        shortestLength = route.points.size();
+                    }
+                    if (route.points.size() > longestLength)
+                    {
+                        longestLength = route.points.size();
+                    }
+                }
+            }
+
+            // 此代码段输出当前地图的路线数量和长度范围供人工复核。
+            std::cout
+                << "[INFO] Map " << loadedMap.id
+                << ": routes=" << loadedMap.routes.size()
+                << ", shortest=" << shortestLength
+                << ", longest=" << longestLength
+                << '\n';
+        }
+
+        // 此代码段在调用失败前放入哨兵数据以验证整包加载的原子性。
+        autochess::core::ConfigBundle unchangedBundle;
+        unchangedBundle.gameConfig.maxRounds = 99;
+        autochess::core::MapDefinition sentinelMap;
+        sentinelMap.id = "sentinel_map";
+        unchangedBundle.maps.push_back(sentinelMap);
+
+        // 此代码段从不存在的目录加载并核对错误信息与原有哨兵数据。
+        autochess::core::ConfigError missingError;
+        const std::filesystem::path missingDirectory =
+            testDataDirectory / "missing_bundle_data";
+        const bool missingLoaded = autochess::core::ConfigBundleLoader::load(
+            missingDirectory, unchangedBundle, missingError);
+        const bool failureIsAtomic = !missingLoaded
+            && unchangedBundle.gameConfig.maxRounds == 99
+            && unchangedBundle.maps.size() == 1
+            && unchangedBundle.maps.front().id == "sentinel_map"
+            && hasExpectedConfigError(
+                missingError,
+                missingDirectory / "game.cfg",
+                autochess::core::ConfigErrorCategory::FileOpen,
+                0);
+        runner.check(
+            failureIsAtomic,
+            "ConfigBundleLoader preserves existing output after a load failure");
 
         return runner.failureCount();
     }
@@ -712,5 +887,16 @@ int main()
     }
 
     std::cout << "[PASS] MapConfigLoader test suite\n";
+
+    // 此代码段运行整包配置集成测试并把任何失败转换为非零退出码。
+    const int configBundleFailures = runConfigBundleLoaderTests();
+    assert(configBundleFailures == 0);
+    if (configBundleFailures != 0)
+    {
+        return 1;
+    }
+
+    // 此输出标记整包加载器的全部集成案例已经通过。
+    std::cout << "[PASS] ConfigBundleLoader test suite\n";
     return 0;
 }
