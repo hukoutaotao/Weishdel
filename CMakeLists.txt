@@ -48,6 +48,9 @@ add_library(
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
     src/core/config/ConfigValueReader.hpp
+    src/core/combat/BattleSetupService.cpp
+    src/core/combat/BattleSetupService.hpp
+    src/core/combat/BattleTypes.hpp
     src/core/economy/EconomyTypes.hpp
     src/core/economy/DeploymentService.cpp
     src/core/economy/DeploymentService.hpp

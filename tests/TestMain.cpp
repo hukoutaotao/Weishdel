@@ -1,4 +1,6 @@
 #include "core/Core.hpp"
+#include "core/combat/BattleSetupService.hpp"
+#include "core/combat/BattleTypes.hpp"
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/config/ConfigError.hpp"
 #include "core/config/DefinitionConfigLoader.hpp"
@@ -4358,6 +4360,119 @@ namespace
 
         return runner.failureCount();
     }
+
+    int runBattleSetupServiceTests()
+    {
+        TestRunner runner;
+
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(loaded, "Battle setup loads the formal configuration");
+        if (!loaded || bundle.factions.empty() || bundle.maps.empty())
+        {
+            return runner.failureCount();
+        }
+
+        auto playerA = autochess::core::PlayerStateService::createInitial(
+            autochess::core::MapSide::A,
+            bundle.gameConfig,
+            bundle.factions.front());
+        auto playerB = autochess::core::PlayerStateService::createInitial(
+            autochess::core::MapSide::B,
+            bundle.gameConfig,
+            bundle.factions.front());
+
+        playerA.activeUnits = {
+            {10, {bundle.units.front().id, 1}, autochess::core::MapSide::A},
+            {11, {bundle.units.front().id, 1}, autochess::core::MapSide::A}};
+        playerA.deployments.emplace(
+            autochess::core::GridPosition{1, 2},
+            10);
+        playerA.reserveSlots[0] = 11;
+
+        playerB.activeUnits = {
+            {20, {bundle.units.front().id, 2}, autochess::core::MapSide::B}};
+        playerB.deployments.emplace(
+            autochess::core::GridPosition{9, 2},
+            20);
+
+        std::vector<autochess::core::BattleUnit> units;
+        std::string setupError;
+        const bool created = autochess::core::BattleSetupService::createUnits(
+            playerA,
+            playerB,
+            bundle.maps.front(),
+            bundle.units,
+            units,
+            setupError);
+        runner.check(
+            created && setupError.empty() && units.size() == 2,
+            "Battle setup creates only deployed units");
+
+        const bool firstUnitIsCorrect = created
+            && units[0].id == 1
+            && units[0].ownedUnitId == 10
+            && units[0].side == autochess::core::MapSide::A
+            && units[0].position
+                == autochess::core::BattlePosition{1.5, 2.5}
+            && units[0].nextRoutePointIndex == 1
+            && units[0].routePoints.size() == 12
+            && units[0].health == 100.0;
+        runner.check(
+            firstUnitIsCorrect,
+            "Battle setup preserves identity, route, and grid-center position");
+
+        const bool secondUnitIsCorrect = created
+            && units[1].id == 2
+            && units[1].ownedUnitId == 20
+            && units[1].identity.level == 2
+            && units[1].stats.maxHealth == 150.0
+            && units[1].stats.guardDamage == 8
+            && units[1].health == units[1].stats.maxHealth;
+        runner.check(
+            secondUnitIsCorrect,
+            "Battle setup resolves level-scaled combat attributes");
+
+        std::vector<autochess::core::BattleUnit> unchanged(1);
+        unchanged.front().id = 99;
+        const std::vector<autochess::core::UnitDefinition> noDefinitions;
+        setupError.clear();
+        const bool missingDefinitionCreated =
+            autochess::core::BattleSetupService::createUnits(
+                playerA,
+                playerB,
+                bundle.maps.front(),
+                noDefinitions,
+                unchanged,
+                setupError);
+        runner.check(
+            !missingDefinitionCreated
+                && !setupError.empty()
+                && unchanged.size() == 1
+                && unchanged.front().id == 99,
+            "Battle setup rejects missing definitions atomically");
+
+        auto invalidPlayerB = playerB;
+        invalidPlayerB.side = autochess::core::MapSide::A;
+        setupError.clear();
+        const bool wrongSideCreated =
+            autochess::core::BattleSetupService::createUnits(
+                playerA,
+                invalidPlayerB,
+                bundle.maps.front(),
+                bundle.units,
+                unchanged,
+                setupError);
+        runner.check(
+            !wrongSideCreated && !setupError.empty(),
+            "Battle setup requires one player for each side");
+
+        return runner.failureCount();
+    }
 }
 
 // 此函数依次运行所有核心配置测试并把失败转换为非零退出码。
@@ -4492,6 +4607,15 @@ int main()
     }
 
     std::cout << "[PASS] Economy integration scenario test suite\n";
+
+    const int battleSetupFailures = runBattleSetupServiceTests();
+    assert(battleSetupFailures == 0);
+    if (battleSetupFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle setup service test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);
