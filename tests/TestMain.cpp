@@ -2,6 +2,7 @@
 #include "core/config/ConfigError.hpp"
 #include "core/config/DefinitionConfigLoader.hpp"
 #include "core/config/GameConfigLoader.hpp"
+#include "core/config/MapConfigLoader.hpp"
 #include "core/config/ConfigParser.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/Definitions.hpp"
@@ -196,6 +197,30 @@ namespace
             && factions.front().id == "sentinel_faction"
             && modifiers.size() == 1
             && modifiers.front().id == "sentinel_modifier"
+            && hasExpectedConfigError(
+                error, path, expectedCategory, expectedLine);
+    }
+
+    // 此函数验证地图加载失败时保留调用方已有地图对象。
+    bool loadMapMustFailWithoutOverwrite(
+        const std::filesystem::path& path,
+        const autochess::core::ConfigErrorCategory expectedCategory,
+        const std::size_t expectedLine)
+    {
+        autochess::core::MapDefinition map;
+        map.id = "sentinel_map";
+        map.width = 99;
+        map.gridRows = {"sentinel_row"};
+
+        autochess::core::ConfigError error;
+        const bool loaded = autochess::core::MapConfigLoader::load(
+            path, map, error);
+
+        return !loaded
+            && map.id == "sentinel_map"
+            && map.width == 99
+            && map.gridRows.size() == 1
+            && map.gridRows.front() == "sentinel_row"
             && hasExpectedConfigError(
                 error, path, expectedCategory, expectedLine);
     }
@@ -487,6 +512,65 @@ namespace
 
         return runner.failureCount();
     }
+
+    // 此函数运行第一张正式地图的加载测试。
+    int runMapConfigLoaderTests()
+    {
+        const std::filesystem::path dataDirectory = AUTOCHESS_DATA_DIR;
+        TestRunner runner;
+
+        autochess::core::MapDefinition map;
+        autochess::core::ConfigError error;
+        const std::filesystem::path validPath =
+            dataDirectory / "maps" / "map_01.map";
+        const bool loaded = autochess::core::MapConfigLoader::load(
+            validPath, map, error);
+
+        int routeACount = 0;
+        int routeBCount = 0;
+        bool everyRouteHasTwelvePoints = loaded;
+        for (const autochess::core::Route& route : map.routes)
+        {
+            routeACount += route.side == autochess::core::MapSide::A ? 1 : 0;
+            routeBCount += route.side == autochess::core::MapSide::B ? 1 : 0;
+            everyRouteHasTwelvePoints =
+                everyRouteHasTwelvePoints && route.points.size() == 12;
+        }
+
+        const bool validValues = loaded
+            && map.id == "map_01"
+            && map.name == "对称双路训练场"
+            && map.width == 11
+            && map.height == 7
+            && map.gridRows.size() == 7
+            && map.gridRows.front() == "###########"
+            && map.gridRows[2] == "#A..###..B#"
+            && map.routes.size() == 4
+            && routeACount == 2
+            && routeBCount == 2
+            && everyRouteHasTwelvePoints;
+        runner.check(
+            validValues,
+            "MapConfigLoader loads map_01 grid and four routes");
+
+        if (loaded)
+        {
+            std::cout
+                << "[INFO] Map summary: id=" << map.id
+                << ", size=" << map.width << 'x' << map.height
+                << ", routes=" << map.routes.size()
+                << '\n';
+        }
+
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                dataDirectory / "maps" / "missing.map",
+                autochess::core::ConfigErrorCategory::FileOpen,
+                0),
+            "MapConfigLoader reports a missing file without overwriting output");
+
+        return runner.failureCount();
+    }
 }
 
 // 此函数依次运行所有核心配置测试并把失败转换为非零退出码。
@@ -551,5 +635,15 @@ int main()
     }
 
     std::cout << "[PASS] DefinitionConfigLoader test suite\n";
+
+    // 此代码段运行第一张地图加载测试并在任一案例失败时终止程序。
+    const int mapFailures = runMapConfigLoaderTests();
+    assert(mapFailures == 0);
+    if (mapFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] MapConfigLoader test suite\n";
     return 0;
 }

@@ -39,6 +39,8 @@ add_library(
     src/core/config/DefinitionConfigLoader.hpp
     src/core/config/GameConfigLoader.cpp
     src/core/config/GameConfigLoader.hpp
+    src/core/config/MapConfigLoader.cpp
+    src/core/config/MapConfigLoader.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
