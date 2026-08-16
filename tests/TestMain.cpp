@@ -513,12 +513,15 @@ namespace
         return runner.failureCount();
     }
 
-    // 此函数运行第一张正式地图的加载测试。
+    // 此函数运行第一张正式地图和全部路线非法输入测试。
     int runMapConfigLoaderTests()
     {
         const std::filesystem::path dataDirectory = AUTOCHESS_DATA_DIR;
+        const std::filesystem::path testDataDirectory =
+            AUTOCHESS_TEST_DATA_DIR;
         TestRunner runner;
 
+        // 此代码段加载第一张正式地图供合法结构和路线数量测试使用。
         autochess::core::MapDefinition map;
         autochess::core::ConfigError error;
         const std::filesystem::path validPath =
@@ -526,6 +529,7 @@ namespace
         const bool loaded = autochess::core::MapConfigLoader::load(
             validPath, map, error);
 
+        // 此代码段统计双方路线并确认对称地图的每条路线长度一致。
         int routeACount = 0;
         int routeBCount = 0;
         bool everyRouteHasTwelvePoints = loaded;
@@ -537,6 +541,7 @@ namespace
                 everyRouteHasTwelvePoints && route.points.size() == 12;
         }
 
+        // 此代码段核对合法地图加载后的全部关键字段和路线摘要。
         const bool validValues = loaded
             && map.id == "map_01"
             && map.name == "对称双路训练场"
@@ -553,6 +558,7 @@ namespace
             validValues,
             "MapConfigLoader loads map_01 grid and four routes");
 
+        // 此代码段在合法地图加载成功后打印便于人工复核的摘要。
         if (loaded)
         {
             std::cout
@@ -562,12 +568,73 @@ namespace
                 << '\n';
         }
 
+        // 此代码段确认文件打开失败时不会覆盖调用方原有地图对象。
         runner.check(
             loadMapMustFailWithoutOverwrite(
                 dataDirectory / "maps" / "missing.map",
                 autochess::core::ConfigErrorCategory::FileOpen,
                 0),
             "MapConfigLoader reports a missing file without overwriting output");
+
+        // 此代码段覆盖路线必填字段、首点和阵营起点的校验。
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_missing_points.map",
+                autochess::core::ConfigErrorCategory::MissingField,
+                13),
+            "MapConfigLoader rejects a route without points");
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_first_point_mismatch.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                16),
+            "MapConfigLoader rejects points whose first item differs from start");
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_wrong_side_start.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                15),
+            "MapConfigLoader rejects a route starting on the opposing deployment");
+
+        // 此代码段覆盖部署格缺少路线或对应多条路线的全局校验。
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_missing_deployment_route.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                10),
+            "MapConfigLoader requires one route for every deployment cell");
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_duplicate_deployment_route.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                10),
+            "MapConfigLoader rejects multiple routes for one deployment cell");
+
+        // 此代码段覆盖路线越界、障碍、斜向连接和错误终点校验。
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_route_out_of_bounds.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                16),
+            "MapConfigLoader rejects an out-of-bounds route point");
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_route_through_obstacle.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                16),
+            "MapConfigLoader rejects a route through an obstacle");
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_route_diagonal.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                16),
+            "MapConfigLoader rejects a diagonal route segment");
+        runner.check(
+            loadMapMustFailWithoutOverwrite(
+                testDataDirectory / "map_route_wrong_guard.map",
+                autochess::core::ConfigErrorCategory::MapValidation,
+                16),
+            "MapConfigLoader requires routes to end at the enemy guard");
 
         return runner.failureCount();
     }
@@ -636,7 +703,7 @@ int main()
 
     std::cout << "[PASS] DefinitionConfigLoader test suite\n";
 
-    // 此代码段运行第一张地图加载测试并在任一案例失败时终止程序。
+    // 此代码段运行地图加载与路线校验测试并在任一案例失败时终止程序。
     const int mapFailures = runMapConfigLoaderTests();
     assert(mapFailures == 0);
     if (mapFailures != 0)
