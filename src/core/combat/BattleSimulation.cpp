@@ -157,12 +157,20 @@ namespace autochess::core
 
         if (unit.side == MapSide::A)
         {
-            summary_.guardDamageToB += unit.stats.guardDamage;
+            frameGuardDamageToB_ += unit.stats.guardDamage;
         }
         else if (unit.side == MapSide::B)
         {
-            summary_.guardDamageToA += unit.stats.guardDamage;
+            frameGuardDamageToA_ += unit.stats.guardDamage;
         }
+    }
+
+    void BattleSimulation::applyFrameGuardDamage() noexcept
+    {
+        summary_.guardDamageToA += frameGuardDamageToA_;
+        summary_.guardDamageToB += frameGuardDamageToB_;
+        frameGuardDamageToA_ = 0;
+        frameGuardDamageToB_ = 0;
     }
 
     void BattleSimulation::moveUnit(BattleUnit& unit)
@@ -432,6 +440,7 @@ namespace autochess::core
                 moveUnit(unit);
             }
         }
+        applyFrameGuardDamage();
 
         updateTargets();
         applyAttacks();

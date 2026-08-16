@@ -4737,12 +4737,12 @@ namespace
 
         autochess::core::MapDefinition map;
         map.id = "attack_map";
-        map.width = 5;
+        map.width = 6;
         map.height = 3;
         map.gridRows = {
-            "#####",
-            "#...#",
-            "#####"};
+            "######",
+            "#....#",
+            "######"};
 
         {
             auto attacker = makeUnit(1, 10, autochess::core::MapSide::A,
@@ -4796,6 +4796,158 @@ namespace
                     && summary.deadOwnedUnitIds
                         == std::vector<autochess::core::OwnedUnitId>{10, 20},
                 "Battle attacks resolve simultaneous mutual deaths in one frame");
+        }
+
+        return runner.failureCount();
+    }
+
+    int runBattleEndConditionTests()
+    {
+        TestRunner runner;
+
+        autochess::core::MapDefinition map;
+        map.id = "end_condition_map";
+        map.width = 6;
+        map.height = 3;
+        map.gridRows = {
+            "######",
+            "#....#",
+            "######"};
+
+        auto makeArrivingUnit = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::OwnedUnitId ownedId,
+            const autochess::core::MapSide side,
+            const double startX,
+            const int guardDamage)
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = id;
+            unit.ownedUnitId = ownedId;
+            unit.side = side;
+            unit.position = {startX, 1.5};
+            unit.routePoints = side == autochess::core::MapSide::A
+                ? std::vector<autochess::core::GridPosition>{{1, 1}, {2, 1}}
+                : std::vector<autochess::core::GridPosition>{{3, 1}, {2, 1}};
+            unit.nextRoutePointIndex = 1;
+            unit.stats.maxHealth = 100.0;
+            unit.health = 100.0;
+            unit.stats.moveSpeed = 60.0;
+            unit.stats.guardDamage = guardDamage;
+            return unit;
+        };
+
+        {
+            const auto first = makeArrivingUnit(
+                1,
+                10,
+                autochess::core::MapSide::A,
+                1.5,
+                5);
+            const auto second = makeArrivingUnit(
+                2,
+                20,
+                autochess::core::MapSide::B,
+                3.5,
+                7);
+            autochess::core::BattleSimulation simulation(
+                {first, second},
+                map,
+                10);
+            const bool stepped = simulation.step();
+            const auto& summary = simulation.summary();
+            runner.check(
+                stepped
+                    && simulation.isFinished()
+                    && summary.endReason
+                        == autochess::core::BattleSummary::EndReason::
+                            AllUnitsResolved
+                    && summary.elapsedFrames == 1
+                    && summary.guardDamageToA == 7
+                    && summary.guardDamageToB == 5
+                    && summary.reachedGuardOwnedUnitIds
+                        == std::vector<autochess::core::OwnedUnitId>{10, 20}
+                    && summary.survivingOwnedUnitIds.empty(),
+                "Battle batches simultaneous guard arrivals and damage");
+        }
+
+        {
+            auto waiting = makeArrivingUnit(
+                1,
+                10,
+                autochess::core::MapSide::A,
+                1.5,
+                5);
+            waiting.routePoints.clear();
+            waiting.stats.moveSpeed = 0.0;
+            autochess::core::BattleSimulation simulation(
+                {waiting},
+                map,
+                1);
+            for (int frame = 0; frame < 60; ++frame)
+            {
+                simulation.step();
+            }
+
+            const auto frameAtTimeout = simulation.currentFrame();
+            const bool extraStep = simulation.step();
+            const auto& summary = simulation.summary();
+            runner.check(
+                simulation.isFinished()
+                    && !extraStep
+                    && frameAtTimeout == 60
+                    && summary.endReason
+                        == autochess::core::BattleSummary::EndReason::Timeout
+                    && summary.elapsedFrames == 60
+                    && summary.survivingOwnedUnitIds
+                        == std::vector<autochess::core::OwnedUnitId>{10}
+                    && simulation.currentFrame() == frameAtTimeout,
+                "Battle timeout preserves remaining units and is idempotent");
+        }
+
+        {
+            auto moving = makeArrivingUnit(
+                1,
+                10,
+                autochess::core::MapSide::A,
+                1.5,
+                5);
+            moving.routePoints = {
+                {1, 1}, {2, 1}, {3, 1}, {4, 1}};
+            moving.stats.moveSpeed = 1.0;
+            moving.stats.attackRange = 1.1;
+            moving.basicAction = autochess::core::BasicAction::Attack;
+            moving.basicDamageType = autochess::core::DamageType::Physical;
+            moving.stats.attackPower = 20.0;
+
+            auto fleeing = makeArrivingUnit(
+                2,
+                20,
+                autochess::core::MapSide::B,
+                2.5,
+                0);
+            fleeing.routePoints = {
+                {2, 1}, {3, 1}, {4, 1}};
+            fleeing.stats.moveSpeed = 1.0;
+            fleeing.stats.attackRange = 0.0;
+            fleeing.basicAction = autochess::core::BasicAction::Unknown;
+
+            autochess::core::BattleSimulation simulation(
+                {moving, fleeing},
+                map,
+                3);
+            for (int frame = 0; frame < 10; ++frame)
+            {
+                simulation.step();
+            }
+
+            const double positionBeforeResume = simulation.units()[0].position.x;
+            const bool hadNoTarget = !simulation.units()[0].targetId.has_value();
+            simulation.step();
+            runner.check(
+                hadNoTarget
+                    && simulation.units()[0].position.x > positionBeforeResume,
+                "Battle resumes route movement after a target leaves range");
         }
 
         return runner.failureCount();
@@ -4979,6 +5131,15 @@ int main()
     }
 
     std::cout << "[PASS] Battle attack test suite\n";
+
+    const int battleEndConditionFailures = runBattleEndConditionTests();
+    assert(battleEndConditionFailures == 0);
+    if (battleEndConditionFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle end-condition test suite\n";
 
     const int parserFailures = runParserTests();
     assert(parserFailures == 0);

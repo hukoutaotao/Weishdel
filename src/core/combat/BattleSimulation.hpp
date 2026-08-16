@@ -49,6 +49,8 @@ namespace autochess::core
 
         void markReachedGuard(BattleUnit& unit) noexcept;
 
+        void applyFrameGuardDamage() noexcept;
+
         bool allUnitsResolved() const noexcept;
 
         void finish(BattleSummary::EndReason reason) noexcept;
@@ -58,6 +60,8 @@ namespace autochess::core
         std::uint64_t timeoutFrames_ = 0;
         std::uint64_t currentFrame_ = 0;
         bool finished_ = false;
+        int frameGuardDamageToA_ = 0;
+        int frameGuardDamageToB_ = 0;
         BattleSummary summary_;
     };
 }
