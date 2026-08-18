@@ -358,6 +358,15 @@ namespace autochess::game
             return;
         }
 
+        const core::MatchPhase phaseBefore = match_->phase();
+        // 此代码块让回合结算页先保持两秒，再执行核心持久状态回写。
+        if (phaseBefore == core::MatchPhase::RoundSettlement
+            && settlementHoldFrames_ > 0)
+        {
+            --settlementHoldFrames_;
+            return;
+        }
+
         // 此代码块先执行本帧双方命令，再推进准备或战斗模拟。
         processControllerCommands();
 
@@ -368,6 +377,13 @@ namespace autochess::game
             || phase == core::MatchPhase::RoundSettlement)
         {
             match_->step();
+        }
+
+        // 此代码块只在战斗刚结束时建立一次固定长度的结算停留。
+        if (phase == core::MatchPhase::Combat
+            && match_->phase() == core::MatchPhase::RoundSettlement)
+        {
+            settlementHoldFrames_ = 120;
         }
     }
 

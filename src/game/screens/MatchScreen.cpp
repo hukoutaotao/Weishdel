@@ -662,9 +662,30 @@ namespace autochess::game
         else if (view_.phase == core::MatchPhase::RoundSettlement)
         {
             title_.setString(L"回合结算");
-            hint_.setString(L"正在结算守卫伤害、单位状态和下一回合资源");
             title_.setPosition(500.0F, 270.0F);
             hint_.setPosition(365.0F, 350.0F);
+            if (view_.battleSummary.has_value())
+            {
+                const core::BattleSummary& summary =
+                    view_.battleSummary.value();
+                std::wostringstream settlementStream;
+                settlementStream << L"战斗已结束，正在结算守卫伤害和单位状态\n"
+                                  << L"对我方守卫伤害："
+                                  << summary.guardDamageToA
+                                  << L"    对电脑守卫伤害："
+                                  << summary.guardDamageToB
+                                  << L"\n死亡："
+                                  << summary.deadOwnedUnitIds.size()
+                                  << L"    到达守卫："
+                                  << summary.reachedGuardOwnedUnitIds.size()
+                                  << L"    存活："
+                                  << summary.survivingOwnedUnitIds.size();
+                hint_.setString(settlementStream.str());
+            }
+            else
+            {
+                hint_.setString(L"正在结算守卫伤害、单位状态和下一回合资源");
+            }
         }
         else if (view_.phase == core::MatchPhase::MatchResult)
         {
