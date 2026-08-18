@@ -147,5 +147,7 @@ namespace autochess::game
         sf::Text combatHud_;
         sf::Text selectedHud_;
         core::BattleUnitId selectedBattleUnitId_ = core::InvalidBattleUnitId;
+        // 此字段防止核心返回结果前重复排队同一个技能命令。
+        bool skillCommandPending_ = false;
     };
 }

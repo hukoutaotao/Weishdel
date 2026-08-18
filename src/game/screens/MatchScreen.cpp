@@ -89,6 +89,8 @@ namespace autochess::game
             if (skillButton_ != nullptr
                 && skillButton_->handleEvent(event))
             {
+                // 此代码块在提交技能命令后锁定按钮直到核心返回结果。
+                skillCommandPending_ = true;
                 pendingAction_.kind = UiActionKind::SubmitCommand;
                 pendingAction_.command = core::GameCommand{
                     core::MapSide::A,
@@ -370,6 +372,8 @@ namespace autochess::game
     // 此函数使用颜色区分成功和失败的核心中文结果。
     void MatchScreen::showCommandResult(const core::CommandResult& result)
     {
+        // 此代码块把核心结果作为技能队列的明确完成信号。
+        skillCommandPending_ = false;
         message_.setString(fromUtf8(result.message));
         message_.setFillColor(
             result.success
@@ -891,6 +895,7 @@ namespace autochess::game
     {
         if (view_.phase != core::MatchPhase::Combat)
         {
+            skillCommandPending_ = false;
             combatHud_.setString(L"");
             selectedHud_.setString(L"");
             if (skillButton_ != nullptr)
@@ -968,7 +973,8 @@ namespace autochess::game
         {
             skillButton_->setLabel(
                 skillReady ? L"释放技能" : L"技能未就绪");
-            skillButton_->setEnabled(skillReady && !paused_);
+            skillButton_->setEnabled(
+                skillReady && !paused_ && !skillCommandPending_);
         }
     }
 
