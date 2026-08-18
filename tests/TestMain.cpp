@@ -1063,12 +1063,21 @@ namespace
             match.step();
             ++combatFrames;
         }
+        const auto settlementView =
+            match.viewFor(autochess::core::MapSide::A);
         runner.check(
             match.phase()
                     == autochess::core::MatchPhase::RoundSettlement
                 && !match.viewFor(autochess::core::MapSide::A)
                         .lastRound.has_value(),
             "Match exposes settlement before persistent state writeback");
+        // 此代码块验证结算页能读取已结束战斗摘要而不提前写回持久状态。
+        runner.check(
+            settlementView.battleSummary.has_value()
+                && settlementView.battleSummary->endReason
+                    != autochess::core::BattleSummary::EndReason::Ongoing
+                && settlementView.combatFramesRemaining == 0U,
+            "Settlement view exposes final battle summary and zero timer");
 
         const int goldABeforeSettlement =
             match.playerState(autochess::core::MapSide::A)->gold;
