@@ -74,6 +74,10 @@ add_library(
     src/core/economy/ShopService.cpp
     src/core/economy/ShopService.hpp
     src/core/map/MapTypes.hpp
+    # 将对局阶段、统一命令和日志类型编译进纯 C++ 核心库。
+    src/core/match/GameCommand.hpp
+    src/core/match/MatchTypes.cpp
+    src/core/match/MatchTypes.hpp
     src/core/model/Definitions.hpp
     src/core/model/PlayerStateService.cpp
     src/core/model/PlayerStateService.hpp

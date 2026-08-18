@@ -18,6 +18,8 @@
 #include "core/economy/RosterService.hpp"
 #include "core/economy/ShopService.hpp"
 #include "core/map/MapTypes.hpp"
+#include "core/match/GameCommand.hpp"
+#include "core/match/MatchTypes.hpp"
 #include "core/model/Definitions.hpp"
 #include "core/model/PlayerStateService.hpp"
 #include "core/model/PlayerTypes.hpp"
@@ -32,6 +34,7 @@
 #include <iostream>
 #include <limits>
 #include <random>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -173,6 +176,41 @@ namespace
             && failureResult.errorCode
                 == autochess::core::CommandErrorCode::InsufficientGold
             && !failureResult.message.empty();
+    }
+
+    // 此函数验证统一命令和对局摘要类型能够被构造并稳定输出。
+    bool runMatchTypesSmokeTest()
+    {
+        const autochess::core::GameCommand command{
+            autochess::core::MapSide::A,
+            autochess::core::SelectMapCommand{"map_01"}};
+
+        autochess::core::RoundSummary round;
+        round.roundNumber = 1;
+        round.battle.guardDamageToA = 3;
+        round.battle.guardDamageToB = 5;
+        round.guardValueA = 97;
+        round.guardValueB = 95;
+        round.loserSide = autochess::core::MapSide::B;
+
+        const autochess::core::MatchResultSummary result{
+            autochess::core::MatchOutcome::SideAWin,
+            3,
+            70,
+            0};
+
+        std::ostringstream output;
+        output << round << '\n' << result;
+
+        return command.actor == autochess::core::MapSide::A
+            && std::holds_alternative<autochess::core::SelectMapCommand>(
+                command.payload)
+            && std::get<autochess::core::SelectMapCommand>(command.payload)
+                    .mapId
+                == "map_01"
+            && output.str().find("[ROUND 1]") != std::string::npos
+            && output.str().find("loser=B") != std::string::npos
+            && output.str().find("outcome=A_win") != std::string::npos;
     }
 
     // 此测试运行器统一输出测试结果并累计失败数量。
@@ -6284,6 +6322,19 @@ int main()
     }
 
     std::cout << "[PASS] Economy data types smoke test\n";
+
+    const bool matchTypesPassed = runMatchTypesSmokeTest();
+
+    assert(matchTypesPassed);
+
+    // 此分支把对局类型烟雾测试失败转换为明确的非零退出码。
+    if (!matchTypesPassed)
+    {
+        std::cerr << "[FAIL] Match data types smoke test\n";
+        return 1;
+    }
+
+    std::cout << "[PASS] Match data types smoke test\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);

@@ -35,6 +35,11 @@ namespace autochess::core
         UnitNotDead,
         UnitAlreadyActive,
         UnitAlreadyDead,
+        InvalidPhase,
+        InvalidActor,
+        InvalidSelection,
+        BattleNotReady,
+        SkillUnavailable,
         InconsistentState
     };
 
