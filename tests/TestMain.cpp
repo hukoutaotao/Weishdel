@@ -438,6 +438,154 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证战斗结果能够原子回写并按全部结束条件产生胜负。
+    int runRoundSettlementTests()
+    {
+        TestRunner runner;
+        autochess::core::GameConfig config;
+        config.maxRounds = 3;
+
+        autochess::core::PlayerState playerA;
+        playerA.side = autochess::core::MapSide::A;
+        playerA.factionId = "training_team";
+        playerA.gold = 10;
+        playerA.guardValue = 100;
+        playerA.reserveSlots.resize(4);
+        playerA.activeUnits = {
+            {1, {"training_guard", 1}, autochess::core::MapSide::A},
+            {2, {"duelist", 1}, autochess::core::MapSide::A},
+            {3, {"ranger", 1}, autochess::core::MapSide::A}};
+        playerA.reserveSlots[0] = 1;
+        playerA.deployments.emplace(
+            autochess::core::GridPosition{1, 2},
+            2);
+        playerA.deployments.emplace(
+            autochess::core::GridPosition{1, 4},
+            3);
+
+        autochess::core::PlayerState playerB;
+        playerB.side = autochess::core::MapSide::B;
+        playerB.factionId = "assault_team";
+        playerB.gold = 10;
+        playerB.guardValue = 100;
+        playerB.reserveSlots.resize(4);
+        playerB.activeUnits = {
+            {4, {"arcanist", 1}, autochess::core::MapSide::B},
+            {5, {"medic", 1}, autochess::core::MapSide::B}};
+        playerB.deployments.emplace(
+            autochess::core::GridPosition{9, 2},
+            4);
+        playerB.deployments.emplace(
+            autochess::core::GridPosition{9, 4},
+            5);
+
+        autochess::core::BattleSummary battle;
+        battle.endReason =
+            autochess::core::BattleSummary::EndReason::Timeout;
+        battle.guardDamageToA = 8;
+        battle.guardDamageToB = 12;
+        battle.deadOwnedUnitIds = {2};
+        battle.reachedGuardOwnedUnitIds = {4};
+        battle.survivingOwnedUnitIds = {3, 5};
+
+        autochess::core::RoundSummary round;
+        const auto settlement =
+            autochess::core::RoundController::settleBattle(
+                playerA,
+                playerB,
+                battle,
+                1,
+                round);
+        runner.check(
+            settlement.success
+                && playerA.guardValue == 92
+                && playerB.guardValue == 88
+                && round.loserSide == autochess::core::MapSide::B,
+            "Round settlement applies guard damage and records loser");
+        runner.check(
+            playerA.deadUnits.size() == 1
+                && playerA.deadUnits.front().id == 2
+                && playerA.deployments.empty()
+                && playerA.reserveSlots[0] == 1
+                && playerA.reserveSlots[1] == 3,
+            "Round settlement moves dead and surviving side A units");
+        runner.check(
+            playerB.deadUnits.empty()
+                && playerB.deployments.empty()
+                && playerB.reserveSlots[0] == 4
+                && playerB.reserveSlots[1] == 5,
+            "Round settlement returns reached and timeout survivors by ID");
+
+        const auto settledPlayerA = playerA;
+        const auto settledPlayerB = playerB;
+        const auto settledRound = round;
+        auto invalidBattle = battle;
+        invalidBattle.deadOwnedUnitIds.push_back(3);
+        const auto invalidSettlement =
+            autochess::core::RoundController::settleBattle(
+                playerA,
+                playerB,
+                invalidBattle,
+                2,
+                round);
+        runner.check(
+            !invalidSettlement.success
+                && playersAreEqual(playerA, settledPlayerA)
+                && playersAreEqual(playerB, settledPlayerB)
+                && round.roundNumber == settledRound.roundNumber,
+            "Round settlement rejects inconsistent summaries atomically");
+
+        auto resultPlayerA = settledPlayerA;
+        auto resultPlayerB = settledPlayerB;
+        resultPlayerA.guardValue = 0;
+        resultPlayerB.guardValue = 20;
+        runner.check(
+            autochess::core::RoundController::determineMatchResult(
+                resultPlayerA,
+                resultPlayerB,
+                config,
+                1).outcome == autochess::core::MatchOutcome::SideBWin,
+            "Match result detects side A guard depletion");
+
+        resultPlayerB.guardValue = 0;
+        runner.check(
+            autochess::core::RoundController::determineMatchResult(
+                resultPlayerA,
+                resultPlayerB,
+                config,
+                1).outcome == autochess::core::MatchOutcome::Draw,
+            "Match result detects simultaneous guard depletion");
+
+        resultPlayerA.guardValue = 60;
+        resultPlayerB.guardValue = 40;
+        runner.check(
+            autochess::core::RoundController::determineMatchResult(
+                resultPlayerA,
+                resultPlayerB,
+                config,
+                3).outcome == autochess::core::MatchOutcome::SideAWin,
+            "Match result compares guards after maximum rounds");
+
+        resultPlayerB.guardValue = 60;
+        runner.check(
+            autochess::core::RoundController::determineMatchResult(
+                resultPlayerA,
+                resultPlayerB,
+                config,
+                3).outcome == autochess::core::MatchOutcome::Draw,
+            "Match result draws equal guards after maximum rounds");
+
+        runner.check(
+            autochess::core::RoundController::determineMatchResult(
+                resultPlayerA,
+                resultPlayerB,
+                config,
+                2).outcome == autochess::core::MatchOutcome::Ongoing,
+            "Match result remains ongoing before maximum rounds");
+
+        return runner.failureCount();
+    }
+
     int runPriceRulesTests()
     {
         TestRunner runner;
@@ -6479,6 +6627,16 @@ int main()
     }
 
     std::cout << "[PASS] Round preparation test suite\n";
+
+    const int roundSettlementFailures = runRoundSettlementTests();
+    assert(roundSettlementFailures == 0);
+    // 此分支把回合结算测试失败转换为非零退出码。
+    if (roundSettlementFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Round settlement test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);

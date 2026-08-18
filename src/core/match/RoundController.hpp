@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/economy/EconomyTypes.hpp"
+#include "core/match/MatchTypes.hpp"
 #include "core/model/Definitions.hpp"
 #include "core/model/PlayerTypes.hpp"
 
@@ -26,5 +27,20 @@ namespace autochess::core
             const std::vector<FactionModifierDefinition>& modifiers,
             MapSide previousLoser,
             std::mt19937& randomEngine);
+
+        // 此函数把战斗摘要原子地回写到双方持久状态并生成回合摘要。
+        static CommandResult settleBattle(
+            PlayerState& playerA,
+            PlayerState& playerB,
+            const BattleSummary& battleSummary,
+            int roundNumber,
+            RoundSummary& roundSummary);
+
+        // 此函数按照守卫归零和最大回合规则计算当前最终结果。
+        static MatchResultSummary determineMatchResult(
+            const PlayerState& playerA,
+            const PlayerState& playerB,
+            const GameConfig& gameConfig,
+            int completedRounds) noexcept;
     };
 }
