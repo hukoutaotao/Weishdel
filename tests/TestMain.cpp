@@ -31,6 +31,7 @@
 #include "MatchScriptedTests.hpp"
 #include "MatchAcceptanceTests.hpp"
 #include "AiTests.hpp"
+#include "AiIntegrationTests.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -7231,6 +7232,16 @@ int main()
     }
 
     std::cout << "[PASS] AI strategy test suite\n";
+
+    // 此代码块运行第九天十八组真实对局集成矩阵并传播失败。
+    const int aiIntegrationFailures = runAiIntegrationTests();
+    assert(aiIntegrationFailures == 0);
+    if (aiIntegrationFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] AI integration test suite\n";
 
     const int matchAcceptanceFailures = runMatchAcceptanceTests();
     assert(matchAcceptanceFailures == 0);

@@ -204,6 +204,9 @@ add_executable(
     # 将第九天 AI 控制器与三种策略差异测试编译进测试目标。
     tests/AiTests.cpp
     tests/AiTests.hpp
+    # 将三策略、双地图和三分队的十八组真实对局矩阵编译进测试目标。
+    tests/AiIntegrationTests.cpp
+    tests/AiIntegrationTests.hpp
     # 将第六天经济、胜负和非法命令验收矩阵编译进测试目标。
     tests/MatchAcceptanceTests.cpp
     tests/MatchAcceptanceTests.hpp
