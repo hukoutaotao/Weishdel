@@ -158,6 +158,9 @@ add_custom_command(
 add_executable(
     AutoChessTests
     tests/TestMain.cpp
+    # 将第六天经济、胜负和非法命令验收矩阵编译进测试目标。
+    tests/MatchAcceptanceTests.cpp
+    tests/MatchAcceptanceTests.hpp
     # 将脚本控制器完整对局测试编译为独立测试源文件。
     tests/MatchScriptedTests.cpp
     tests/MatchScriptedTests.hpp

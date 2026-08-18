@@ -29,6 +29,7 @@
 #include "core/skills/SkillSystem.hpp"
 #include "core/units/Unit.hpp"
 #include "MatchScriptedTests.hpp"
+#include "MatchAcceptanceTests.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -7191,6 +7192,16 @@ int main()
     }
 
     std::cout << "[PASS] Scripted match test suite\n";
+
+    const int matchAcceptanceFailures = runMatchAcceptanceTests();
+    assert(matchAcceptanceFailures == 0);
+    // 此分支把第六天补充验收矩阵失败转换为非零退出码。
+    if (matchAcceptanceFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Match acceptance test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);
