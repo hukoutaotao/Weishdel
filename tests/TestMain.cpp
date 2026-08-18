@@ -19,6 +19,7 @@
 #include "core/economy/ShopService.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/match/GameCommand.hpp"
+#include "core/match/Match.hpp"
 #include "core/match/MatchTypes.hpp"
 #include "core/match/RoundController.hpp"
 #include "core/model/Definitions.hpp"
@@ -582,6 +583,144 @@ namespace
                 config,
                 2).outcome == autochess::core::MatchOutcome::Ongoing,
             "Match result remains ongoing before maximum rounds");
+
+        return runner.failureCount();
+    }
+
+    // 此函数验证选择命令只能按地图、玩家分队、策略和电脑分队顺序执行。
+    int runMatchSelectionTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(loaded, "Match selection loads formal configuration");
+        // 此分支在正式配置加载失败时停止状态机测试。
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        autochess::core::Match match(bundle);
+        runner.check(
+            match.phase() == autochess::core::MatchPhase::MapSelection
+                && match.currentRound() == 0
+                && match.playerState(autochess::core::MapSide::A) == nullptr,
+            "Match starts in map selection without players");
+
+        const auto earlyFaction = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectFactionCommand{"training_team"}});
+        runner.check(
+            !earlyFaction.success
+                && earlyFaction.errorCode
+                    == autochess::core::CommandErrorCode::InvalidPhase
+                && match.phase()
+                    == autochess::core::MatchPhase::MapSelection,
+            "Match rejects faction selection before map");
+
+        const auto unknownMap = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectMapCommand{"missing_map"}});
+        runner.check(
+            !unknownMap.success
+                && unknownMap.errorCode
+                    == autochess::core::CommandErrorCode::InvalidSelection
+                && match.selectedMapId().empty(),
+            "Match rejects an unknown map atomically");
+
+        const auto mapResult = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectMapCommand{"map_01"}});
+        runner.check(
+            mapResult.success
+                && match.phase()
+                    == autochess::core::MatchPhase::FactionSelection
+                && match.selectedMapId() == "map_01",
+            "Match advances from map to faction selection");
+
+        const auto wrongFactionActor = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::SelectFactionCommand{"training_team"}});
+        runner.check(
+            !wrongFactionActor.success
+                && wrongFactionActor.errorCode
+                    == autochess::core::CommandErrorCode::InvalidActor,
+            "Match rejects side B selecting the player faction");
+
+        const auto factionResult = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectFactionCommand{"training_team"}});
+        runner.check(
+            factionResult.success
+                && match.phase()
+                    == autochess::core::MatchPhase::AiSelection,
+            "Match advances from faction to AI selection");
+
+        const auto earlyAiFaction = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::SelectFactionCommand{"assault_team"}});
+        runner.check(
+            !earlyAiFaction.success
+                && earlyAiFaction.errorCode
+                    == autochess::core::CommandErrorCode::InvalidPhase,
+            "Match waits for an AI strategy before side B faction");
+
+        const auto invalidStrategy = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectAiStrategyCommand{
+                autochess::core::AiStrategyKind::Unknown}});
+        runner.check(
+            !invalidStrategy.success
+                && invalidStrategy.errorCode
+                    == autochess::core::CommandErrorCode::InvalidSelection,
+            "Match rejects the unknown AI strategy");
+
+        const auto strategyResult = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectAiStrategyCommand{
+                autochess::core::AiStrategyKind::Route}});
+        runner.check(
+            strategyResult.success
+                && match.selectedAiStrategy()
+                    == autochess::core::AiStrategyKind::Route
+                && match.phase()
+                    == autochess::core::MatchPhase::AiSelection,
+            "Match records AI strategy before side B faction");
+
+        const auto aiFactionResult = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::SelectFactionCommand{"assault_team"}});
+        const auto* playerA = match.playerState(autochess::core::MapSide::A);
+        const auto* playerB = match.playerState(autochess::core::MapSide::B);
+        const auto* shopA = match.shopState(autochess::core::MapSide::A);
+        const auto* shopB = match.shopState(autochess::core::MapSide::B);
+        runner.check(
+            aiFactionResult.success
+                && match.phase() == autochess::core::MatchPhase::Preparation
+                && match.currentRound() == 1
+                && playerA != nullptr
+                && playerB != nullptr
+                && playerA->gold == 15
+                && playerB->gold == 15
+                && shopA != nullptr
+                && shopB != nullptr
+                && shopA->offers.size() == 6
+                && shopB->offers.size() == 6,
+            "Match creates both players and first preparation atomically");
+
+        const auto repeatedMap = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SelectMapCommand{"map_02"}});
+        runner.check(
+            !repeatedMap.success
+                && repeatedMap.errorCode
+                    == autochess::core::CommandErrorCode::InvalidPhase
+                && match.selectedMapId() == "map_01",
+            "Match rejects repeated map selection after preparation");
 
         return runner.failureCount();
     }
@@ -6637,6 +6776,16 @@ int main()
     }
 
     std::cout << "[PASS] Round settlement test suite\n";
+
+    const int matchSelectionFailures = runMatchSelectionTests();
+    assert(matchSelectionFailures == 0);
+    // 此分支把 Match 选择状态机测试失败转换为非零退出码。
+    if (matchSelectionFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Match selection test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);

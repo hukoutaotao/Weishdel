@@ -76,6 +76,9 @@ add_library(
     src/core/map/MapTypes.hpp
     # 将对局阶段、统一命令和日志类型编译进纯 C++ 核心库。
     src/core/match/GameCommand.hpp
+    # 将对局选择状态机和统一命令入口编译进核心库。
+    src/core/match/Match.cpp
+    src/core/match/Match.hpp
     src/core/match/MatchTypes.cpp
     src/core/match/MatchTypes.hpp
     # 将回合收入、败者补助和商店重建事务编译进核心库。
