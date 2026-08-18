@@ -83,6 +83,37 @@ namespace autochess::game
     // 此函数把一次选择按钮点击转换为待提交核心命令。
     void MatchScreen::handleEvent(const sf::Event& event)
     {
+        // 此代码块在暂停覆盖层开启时只允许继续、重开或返回菜单。
+        if (paused_)
+        {
+            if (resumeButton_ != nullptr
+                && resumeButton_->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::TogglePause;
+                return;
+            }
+            if (restartButton_ != nullptr
+                && restartButton_->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::RestartMatch;
+                return;
+            }
+            if (resultMenuButton_ != nullptr
+                && resultMenuButton_->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::BackToMenu;
+                return;
+            }
+            return;
+        }
+
+        // 此代码块让准备和战斗页面的暂停按钮优先于其他操作生效。
+        if (pauseButton_ != nullptr && pauseButton_->handleEvent(event))
+        {
+            pendingAction_.kind = UiActionKind::TogglePause;
+            return;
+        }
+
         // 此代码块优先处理战斗选中和技能按钮，统一转换为核心命令。
         if (view_.phase == core::MatchPhase::Combat)
         {
@@ -300,6 +331,15 @@ namespace autochess::game
             drawPreparationUnits(target);
         }
 
+        // 此代码块绘制战斗和准备阶段右上角的暂停入口。
+        if (!paused_
+            && (view_.phase == core::MatchPhase::Preparation
+                || view_.phase == core::MatchPhase::Combat)
+            && pauseButton_ != nullptr)
+        {
+            pauseButton_->draw(target);
+        }
+
         // 此代码块在战斗及结算阶段叠加连续单位和战斗状态面板。
         if (view_.phase == core::MatchPhase::Combat
             || view_.phase == core::MatchPhase::RoundSettlement)
@@ -313,6 +353,30 @@ namespace autochess::game
             if (skillButton_ != nullptr)
             {
                 skillButton_->draw(target);
+            }
+        }
+
+        // 此代码块在暂停时覆盖底层画面并绘制三个应用层操作按钮。
+        if (paused_)
+        {
+            sf::RectangleShape overlay(sf::Vector2f(1280.0F, 720.0F));
+            overlay.setFillColor(sf::Color(15, 18, 25, 190));
+            target.draw(overlay);
+            sf::Text pausedText(L"游戏已暂停", font_, 42);
+            pausedText.setFillColor(sf::Color(240, 242, 250));
+            pausedText.setPosition(535.0F, 145.0F);
+            target.draw(pausedText);
+            if (resumeButton_ != nullptr)
+            {
+                resumeButton_->draw(target);
+            }
+            if (restartButton_ != nullptr)
+            {
+                restartButton_->draw(target);
+            }
+            if (resultMenuButton_ != nullptr)
+            {
+                resultMenuButton_->draw(target);
             }
         }
 
@@ -386,6 +450,7 @@ namespace autochess::game
     void MatchScreen::setPaused(const bool paused) noexcept
     {
         paused_ = paused;
+        refreshCombatWidgets();
     }
 
     // 此函数根据核心选择列表建立动态数量的选择按钮。
@@ -400,6 +465,10 @@ namespace autochess::game
         refreshButton_.reset();
         startButton_.reset();
         skillButton_.reset();
+        pauseButton_.reset();
+        resumeButton_.reset();
+        restartButton_.reset();
+        resultMenuButton_.reset();
         showDeathList_ = false;
         message_.setString(L"");
 
@@ -534,6 +603,26 @@ namespace autochess::game
                 sf::FloatRect(880.0F, 570.0F, 368.0F, 52.0F),
                 L"电脑正在准备",
                 21);
+            pauseButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(1070.0F, 18.0F, 178.0F, 46.0F),
+                L"暂停",
+                20);
+            resumeButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(440.0F, 245.0F, 400.0F, 58.0F),
+                L"继续游戏",
+                22);
+            restartButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(440.0F, 325.0F, 400.0F, 58.0F),
+                L"重新开始",
+                22);
+            resultMenuButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(440.0F, 405.0F, 400.0F, 58.0F),
+                L"返回主菜单",
+                22);
             refreshPreparationWidgets();
         }
         else if (view_.phase == core::MatchPhase::Combat)
@@ -548,6 +637,26 @@ namespace autochess::game
                 sf::FloatRect(880.0F, 500.0F, 368.0F, 52.0F),
                 L"技能未就绪",
                 21);
+            pauseButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(1070.0F, 18.0F, 178.0F, 46.0F),
+                L"暂停",
+                20);
+            resumeButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(440.0F, 245.0F, 400.0F, 58.0F),
+                L"继续游戏",
+                22);
+            restartButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(440.0F, 325.0F, 400.0F, 58.0F),
+                L"重新开始",
+                22);
+            resultMenuButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(440.0F, 405.0F, 400.0F, 58.0F),
+                L"返回主菜单",
+                22);
             refreshCombatWidgets();
         }
         else if (view_.phase == core::MatchPhase::RoundSettlement)

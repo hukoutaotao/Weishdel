@@ -170,6 +170,22 @@ namespace autochess::game
         {
             startNewGame();
         }
+        else if (action.kind == UiActionKind::TogglePause
+                 && match_ != nullptr
+                 && (match_->phase() == core::MatchPhase::Preparation
+                     || match_->phase() == core::MatchPhase::Combat))
+        {
+            // 此代码块把暂停动作限定在准备和战斗阶段并同步页面状态。
+            paused_ = !paused_;
+            if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
+            {
+                matchScreen->setPaused(paused_);
+            }
+        }
+        else if (action.kind == UiActionKind::RestartMatch)
+        {
+            restartCurrentGame();
+        }
         else if (action.kind == UiActionKind::SubmitCommand
                  && action.command.has_value()
                  && humanController_ != nullptr)
@@ -181,6 +197,7 @@ namespace autochess::game
     // 此函数用统一字体构造没有残留交互状态的主菜单。
     void GameApp::showMainMenu()
     {
+        clearMatchState();
         screen_ = std::make_unique<MainMenuScreen>(font_);
     }
 
@@ -199,7 +216,82 @@ namespace autochess::game
             std::make_unique<BootstrapComputerController>();
         screen_ = std::make_unique<MatchScreen>(font_, config_);
         accumulatorSeconds_ = 0.0F;
+        paused_ = false;
+        settlementHoldFrames_ = 0;
         updateMatchScreen();
+    }
+
+    // 此函数在原选择不变时事务式创建新的第一回合 Match。
+    void GameApp::restartCurrentGame()
+    {
+        if (match_ == nullptr)
+        {
+            return;
+        }
+
+        const core::ReadOnlyGameView previous =
+            match_->viewFor(core::MapSide::A);
+        if (previous.selectedMapId.empty()
+            || previous.factionIdA.empty()
+            || previous.factionIdB.empty()
+            || previous.aiStrategy == core::AiStrategyKind::Unknown)
+        {
+            return;
+        }
+
+        auto restartedMatch = std::make_unique<core::Match>(config_);
+        const auto mapResult = restartedMatch->submit({
+            core::MapSide::A,
+            core::SelectMapCommand{previous.selectedMapId}});
+        const auto factionAResult = restartedMatch->submit({
+            core::MapSide::A,
+            core::SelectFactionCommand{previous.factionIdA}});
+        const auto aiResult = restartedMatch->submit({
+            core::MapSide::A,
+            core::SelectAiStrategyCommand{previous.aiStrategy}});
+        const auto factionBResult = restartedMatch->submit({
+            core::MapSide::B,
+            core::SelectFactionCommand{previous.factionIdB}});
+
+        // 此代码块只有在四条选择命令全部成功后才替换旧对局。
+        if (!mapResult.success || !factionAResult.success
+            || !aiResult.success || !factionBResult.success)
+        {
+            if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
+            {
+                matchScreen->showCommandResult(
+                    !mapResult.success
+                        ? mapResult
+                        : (!factionAResult.success
+                               ? factionAResult
+                               : (!aiResult.success ? aiResult : factionBResult)));
+            }
+            return;
+        }
+
+        match_ = std::move(restartedMatch);
+        humanController_ = std::make_unique<HumanController>(core::MapSide::A);
+        computerController_ =
+            std::make_unique<BootstrapComputerController>();
+        paused_ = false;
+        settlementHoldFrames_ = 0;
+        accumulatorSeconds_ = 0.0F;
+        if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
+        {
+            matchScreen->setPaused(false);
+        }
+        updateMatchScreen();
+    }
+
+    // 此函数清除对局对象并使主菜单不会继续推进隐藏核心状态。
+    void GameApp::clearMatchState() noexcept
+    {
+        match_.reset();
+        humanController_.reset();
+        computerController_.reset();
+        paused_ = false;
+        settlementHoldFrames_ = 0;
+        accumulatorSeconds_ = 0.0F;
     }
 
     // 此函数按 A 后 B 的稳定顺序提交控制器本帧产生的命令。
@@ -256,6 +348,12 @@ namespace autochess::game
     {
         // 此代码块在尚未创建对局时保持资源检查页面静止。
         if (match_ == nullptr)
+        {
+            return;
+        }
+
+        // 此代码块在暂停时保留渲染和事件循环但冻结所有核心时间。
+        if (paused_)
         {
             return;
         }
