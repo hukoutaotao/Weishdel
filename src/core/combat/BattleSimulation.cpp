@@ -247,13 +247,23 @@ namespace autochess::core
             {
                 return candidate.id == unit.targetId.value();
             });
-        if (iterator == units_.end()
+        // 此代码块按普通行动类型校验阵营、生命和距离条件。
+        const bool commonInvalid = iterator == units_.end()
             || iterator->state != BattleUnitState::Alive
-            || iterator->side == unit.side
-            || CombatRules::distance(
-                   unit.position,
-                   iterator->position)
-                > unit.stats.attackRange)
+            || CombatRules::distance(unit.position, iterator->position)
+                > unit.stats.attackRange;
+        const bool attackInvalid = unit.basicAction == BasicAction::Attack
+            && iterator != units_.end()
+            && iterator->side == unit.side;
+        const bool healInvalid = unit.basicAction == BasicAction::Heal
+            && iterator != units_.end()
+            && (iterator->side != unit.side
+                || iterator->health >= iterator->stats.maxHealth);
+        if (commonInvalid
+            || attackInvalid
+            || healInvalid
+            || (unit.basicAction != BasicAction::Attack
+                && unit.basicAction != BasicAction::Heal))
         {
             unit.targetId.reset();
         }
@@ -270,28 +280,28 @@ namespace autochess::core
         }
     }
 
-    void BattleSimulation::applyAttacks()
+    void BattleSimulation::applyBasicActions()
     {
-        struct AttackIntent
+        // 此结构保存本帧普通行动产生的伤害或治疗意图。
+        struct BasicActionIntent
         {
-            BattleUnitId attackerId = InvalidBattleUnitId;
             BattleUnitId targetId = InvalidBattleUnitId;
             double damage = 0.0;
+            double healing = 0.0;
         };
 
-        std::vector<AttackIntent> intents;
-        for (BattleUnit& attacker : units_)
+        std::vector<BasicActionIntent> intents;
+        for (BattleUnit& actor : units_)
         {
-            if (attacker.state != BattleUnitState::Alive
-                || attacker.basicAction != BasicAction::Attack
-                || !attacker.targetId.has_value())
+            if (actor.state != BattleUnitState::Alive
+                || !actor.targetId.has_value())
             {
                 continue;
             }
 
             const double interval = CombatRules::attackInterval(
-                attacker.stats.attackSpeed);
-            if (attacker.attackElapsed + 1.0e-9 < interval)
+                actor.stats.attackSpeed);
+            if (actor.basicActionElapsed + 1.0e-9 < interval)
             {
                 continue;
             }
@@ -299,71 +309,81 @@ namespace autochess::core
             const auto targetIterator = std::find_if(
                 units_.begin(),
                 units_.end(),
-                [&attacker](const BattleUnit& candidate)
+                [&actor](const BattleUnit& candidate)
                 {
-                    return candidate.id == attacker.targetId.value()
-                        && candidate.state == BattleUnitState::Alive
-                        && candidate.side != attacker.side;
+                    return candidate.id == actor.targetId.value()
+                        && candidate.state == BattleUnitState::Alive;
                 });
             if (targetIterator == units_.end())
             {
-                attacker.targetId.reset();
+                actor.targetId.reset();
                 continue;
             }
 
+            // 此代码块把攻击或治疗转换为统一的本帧生命变化意图。
             double damage = 0.0;
-            if (attacker.basicDamageType == DamageType::Physical)
+            double healing = 0.0;
+            if (actor.basicAction == BasicAction::Attack
+                && targetIterator->side != actor.side
+                && actor.basicDamageType == DamageType::Physical)
             {
                 damage = CombatRules::physicalDamage(
-                    attacker.stats.attackPower,
+                    actor.stats.attackPower,
                     targetIterator->stats.physicalDefense);
             }
-            else if (attacker.basicDamageType == DamageType::Magic)
+            else if (actor.basicAction == BasicAction::Attack
+                && targetIterator->side != actor.side
+                && actor.basicDamageType == DamageType::Magic)
             {
                 damage = CombatRules::magicDamage(
-                    attacker.stats.attackPower,
+                    actor.stats.attackPower,
                     targetIterator->stats.magicResistance);
+            }
+            else if (actor.basicAction == BasicAction::Heal
+                && targetIterator->side == actor.side
+                && targetIterator->health < targetIterator->stats.maxHealth)
+            {
+                healing = actor.stats.attackPower;
             }
             else
             {
                 continue;
             }
 
-            intents.push_back(AttackIntent{
-                attacker.id,
+            intents.push_back(BasicActionIntent{
                 targetIterator->id,
-                damage});
-            attacker.attackElapsed = 0.0;
+                damage,
+                healing});
+            actor.basicActionElapsed = 0.0;
         }
 
+        // 此代码块分别累计同帧伤害和治疗以消除单位遍历顺序影响。
         std::map<BattleUnitId, double> accumulatedDamage;
-        for (const AttackIntent& intent : intents)
+        std::map<BattleUnitId, double> accumulatedHealing;
+        for (const BasicActionIntent& intent : intents)
         {
             accumulatedDamage[intent.targetId] += intent.damage;
+            accumulatedHealing[intent.targetId] += intent.healing;
         }
 
-        for (const auto& damage : accumulatedDamage)
+        // 此代码块一次性应用净生命变化并在结算后标记死亡。
+        for (BattleUnit& target : units_)
         {
-            const auto targetIterator = std::find_if(
-                units_.begin(),
-                units_.end(),
-                [&damage](const BattleUnit& unit)
-                {
-                    return unit.id == damage.first
-                        && unit.state == BattleUnitState::Alive;
-                });
-            if (targetIterator == units_.end())
+            if (target.state != BattleUnitState::Alive)
             {
                 continue;
             }
 
-            targetIterator->health -= damage.second;
-            if (targetIterator->health <= 0.0)
+            target.health = std::min(
+                target.stats.maxHealth,
+                target.health - accumulatedDamage[target.id]
+                    + accumulatedHealing[target.id]);
+            if (target.health <= 0.0)
             {
-                targetIterator->health = 0.0;
-                targetIterator->state = BattleUnitState::Dead;
-                targetIterator->targetId.reset();
-                targetIterator->firstInRangeFrame.clear();
+                target.health = 0.0;
+                target.state = BattleUnitState::Dead;
+                target.targetId.reset();
+                target.firstInRangeFrame.clear();
             }
         }
     }
@@ -427,7 +447,7 @@ namespace autochess::core
         {
             if (unit.state == BattleUnitState::Alive)
             {
-                unit.attackElapsed += FixedDeltaSeconds;
+                unit.basicActionElapsed += FixedDeltaSeconds;
                 clearInvalidTarget(unit);
             }
         }
@@ -443,7 +463,7 @@ namespace autochess::core
         applyFrameGuardDamage();
 
         updateTargets();
-        applyAttacks();
+        applyBasicActions();
 
         if (allUnitsResolved())
         {

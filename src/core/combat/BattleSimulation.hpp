@@ -45,7 +45,7 @@ namespace autochess::core
 
         void updateTargets();
 
-        void applyAttacks();
+        void applyBasicActions();
 
         void markReachedGuard(BattleUnit& unit) noexcept;
 

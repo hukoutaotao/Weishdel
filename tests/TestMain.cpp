@@ -5097,6 +5097,8 @@ namespace
 
         autochess::core::BattleUnit attacker;
         attacker.id = 1;
+        // 此字段让既有索敌案例继续验证普通攻击目标规则。
+        attacker.basicAction = autochess::core::BasicAction::Attack;
         attacker.side = autochess::core::MapSide::A;
         attacker.position = {1.5, 1.5};
         attacker.stats.attackRange = 2.0;
@@ -5148,6 +5150,37 @@ namespace
             !units[0].targetId.has_value()
                 && units[0].firstInRangeFrame.empty(),
             "Target selector clears dead targets immediately");
+
+        // 此代码块验证普通治疗按最低生命比例和编号选择同阵营目标。
+        auto healer = attacker;
+        healer.id = 5;
+        healer.basicAction = autochess::core::BasicAction::Heal;
+        healer.side = autochess::core::MapSide::A;
+        healer.health = 50.0;
+        healer.stats.maxHealth = 100.0;
+        healer.stats.attackRange = 3.0;
+        auto lowerIdAlly = healer;
+        lowerIdAlly.id = 2;
+        lowerIdAlly.health = 20.0;
+        auto higherIdAlly = healer;
+        higherIdAlly.id = 3;
+        higherIdAlly.health = 40.0;
+        higherIdAlly.stats.maxHealth = 200.0;
+        auto fullAlly = healer;
+        fullAlly.id = 4;
+        fullAlly.health = 100.0;
+        auto enemy = lowerIdAlly;
+        enemy.id = 1;
+        enemy.side = autochess::core::MapSide::B;
+        std::vector<autochess::core::BattleUnit> healingUnits = {
+            enemy, lowerIdAlly, higherIdAlly, fullAlly, healer};
+        autochess::core::TargetSelector::update(
+            healingUnits[4], healingUnits, 9);
+        runner.check(
+            healingUnits[4].targetId.has_value()
+                && healingUnits[4].targetId.value() == 2
+                && healingUnits[4].firstInRangeFrame.empty(),
+            "Target selector heals the lowest-ratio ally with ID tie-break");
 
         return runner.failureCount();
     }
@@ -5244,6 +5277,103 @@ namespace
                         == std::vector<autochess::core::OwnedUnitId>{10, 20},
                 "Battle attacks resolve simultaneous mutual deaths in one frame");
         }
+
+        return runner.failureCount();
+    }
+
+    // 此函数验证普通治疗、自疗、上限和同帧净生命结算。
+    int runBattleHealingTests()
+    {
+        TestRunner runner;
+
+        autochess::core::MapDefinition map;
+        map.id = "healing_map";
+        map.width = 6;
+        map.height = 3;
+        map.gridRows = {
+            "######",
+            "#....#",
+            "######"};
+
+        // 此辅助代码块创建无需路线移动的固定位置战斗单位。
+        const auto makeUnit = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::MapSide side,
+            const autochess::core::BattlePosition position,
+            const double health)
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = id;
+            unit.ownedUnitId = id * 10;
+            unit.identity = {"healing_unit", 1};
+            unit.side = side;
+            unit.position = position;
+            unit.stats.maxHealth = 100.0;
+            unit.stats.physicalDefense = 7.0;
+            unit.stats.attackRange = 2.0;
+            unit.stats.attackSpeed = 0.0;
+            unit.health = health;
+            return unit;
+        };
+
+        // 此代码块验证医师在两秒间隔后治疗最低血量友军并限制到满血。
+        auto healer = makeUnit(
+            1, autochess::core::MapSide::A, {1.5, 1.5}, 100.0);
+        healer.basicAction = autochess::core::BasicAction::Heal;
+        healer.basicDamageType = autochess::core::DamageType::None;
+        healer.stats.attackPower = 16.0;
+        auto wounded = makeUnit(
+            2, autochess::core::MapSide::A, {2.5, 1.5}, 90.0);
+        autochess::core::BattleSimulation healingSimulation(
+            {healer, wounded}, map, 3);
+        for (int frame = 0; frame < 120; ++frame)
+        {
+            healingSimulation.step();
+        }
+        runner.check(
+            nearlyEqual(healingSimulation.units()[1].health, 100.0)
+                && healingSimulation.units()[0].targetId.has_value()
+                && healingSimulation.units()[0].targetId.value() == 2,
+            "Battle healing restores an ally without exceeding max health");
+
+        // 此代码块验证没有其他受伤友军时医师能够选择并治疗自己。
+        auto selfHealer = healer;
+        selfHealer.health = 50.0;
+        auto fullAlly = wounded;
+        fullAlly.health = 100.0;
+        autochess::core::BattleSimulation selfHealingSimulation(
+            {selfHealer, fullAlly}, map, 3);
+        for (int frame = 0; frame < 120; ++frame)
+        {
+            selfHealingSimulation.step();
+        }
+        runner.check(
+            nearlyEqual(selfHealingSimulation.units()[0].health, 66.0),
+            "Battle healing permits a healer to heal itself");
+
+        // 此代码块验证同帧伤害和治疗按净生命变化结算而不依赖遍历顺序。
+        auto netHealer = healer;
+        netHealer.position = {1.5, 1.5};
+        auto fragileAlly = wounded;
+        fragileAlly.position = {2.5, 1.5};
+        fragileAlly.health = 10.0;
+        auto enemyAttacker = makeUnit(
+            3, autochess::core::MapSide::B, {3.0, 1.5}, 100.0);
+        enemyAttacker.basicAction = autochess::core::BasicAction::Attack;
+        enemyAttacker.basicDamageType = autochess::core::DamageType::Physical;
+        enemyAttacker.stats.attackPower = 20.0;
+        enemyAttacker.stats.attackRange = 0.6;
+        autochess::core::BattleSimulation netSimulation(
+            {netHealer, fragileAlly, enemyAttacker}, map, 3);
+        for (int frame = 0; frame < 120; ++frame)
+        {
+            netSimulation.step();
+        }
+        runner.check(
+            netSimulation.units()[1].state
+                    == autochess::core::BattleUnitState::Alive
+                && nearlyEqual(netSimulation.units()[1].health, 13.0),
+            "Battle batches same-frame damage and healing as one net change");
 
         return runner.failureCount();
     }
@@ -5588,6 +5718,16 @@ int main()
     }
 
     std::cout << "[PASS] Battle attack test suite\n";
+
+    // 此代码块运行普通治疗测试并传播任一失败。
+    const int battleHealingFailures = runBattleHealingTests();
+    assert(battleHealingFailures == 0);
+    if (battleHealingFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle healing test suite\n";
 
     const int battleEndConditionFailures = runBattleEndConditionTests();
     assert(battleEndConditionFailures == 0);

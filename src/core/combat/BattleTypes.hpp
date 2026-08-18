@@ -83,7 +83,7 @@ namespace autochess::core
         std::size_t nextRoutePointIndex = 0;
 
         double health = 0.0;
-        double attackElapsed = 0.0;
+        double basicActionElapsed = 0.0;
         std::optional<BattleUnitId> targetId;
         std::map<BattleUnitId, std::uint64_t> firstInRangeFrame;
         BattleUnitState state = BattleUnitState::Alive;
