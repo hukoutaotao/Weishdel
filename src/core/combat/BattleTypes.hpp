@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace autochess::core
@@ -47,6 +48,18 @@ namespace autochess::core
         ReachedGuard
     };
 
+    // 此结构保存单个主动技能的确定性持续状态和行为许可。
+    struct ActiveSkillState
+    {
+        bool active = false;
+        std::uint64_t remainingFrames = 0;
+        bool allowMove = true;
+        bool allowBasicAction = true;
+        BuffStat buffStat = BuffStat::None;
+        ModifierMode modifierMode = ModifierMode::None;
+        double modifierValue = 0.0;
+    };
+
     struct BattleUnit
     {
         BattleUnitId id = InvalidBattleUnitId;
@@ -55,7 +68,15 @@ namespace autochess::core
         MapSide side = MapSide::Unknown;
         BasicAction basicAction = BasicAction::Unknown;
         DamageType basicDamageType = DamageType::Unknown;
+        // 此代码块区分分队解析后的基础属性与技能修改后的实时属性。
+        BattleStats baseStats;
         BattleStats stats;
+
+        // 此代码块保存配置驱动的技能身份、技力和持续状态。
+        std::string skillId;
+        double currentMana = 0.0;
+        double maxMana = 0.0;
+        ActiveSkillState activeSkill;
 
         BattlePosition position;
         std::vector<GridPosition> routePoints;

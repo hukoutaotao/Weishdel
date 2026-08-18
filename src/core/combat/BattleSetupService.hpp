@@ -19,6 +19,8 @@ namespace autochess::core
             const PlayerState& playerB,
             const MapDefinition& map,
             const std::vector<UnitDefinition>& definitions,
+            const std::vector<FactionDefinition>& factions,
+            const std::vector<FactionModifierDefinition>& modifiers,
             std::vector<BattleUnit>& output,
             std::string& errorMessage);
     };

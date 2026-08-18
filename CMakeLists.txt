@@ -50,6 +50,9 @@ add_library(
     src/core/config/ConfigValueReader.hpp
     src/core/combat/BattleSetupService.cpp
     src/core/combat/BattleSetupService.hpp
+    # 将等级和分队属性解析集中为可独立测试的纯核心服务。
+    src/core/combat/BattleStatResolver.cpp
+    src/core/combat/BattleStatResolver.hpp
     src/core/combat/BattleSimulation.cpp
     src/core/combat/BattleSimulation.hpp
     src/core/combat/BattleTypes.hpp

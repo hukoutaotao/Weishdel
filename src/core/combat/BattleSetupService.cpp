@@ -1,17 +1,15 @@
 #include "core/combat/BattleSetupService.hpp"
 
+#include "core/combat/BattleStatResolver.hpp"
 #include "core/model/PlayerStateService.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <utility>
 
 namespace autochess::core
 {
     namespace
     {
-        constexpr double kMinimumStat = 0.0;
-
         bool fail(std::string& errorMessage, const char* message)
         {
             errorMessage = message;
@@ -64,52 +62,19 @@ namespace autochess::core
             return iterator == definitions.end() ? nullptr : &*iterator;
         }
 
-        bool resolveStats(
-            const UnitDefinition& definition,
-            const int level,
-            BattleStats& stats,
-            std::string& errorMessage)
+        // 此函数按玩家保存的分队 ID 查找唯一分队定义。
+        const FactionDefinition* findFaction(
+            const std::vector<FactionDefinition>& factions,
+            const std::string& factionId)
         {
-            if (level < 1 || level > 3)
-            {
-                return fail(errorMessage, "战斗单位等级必须在 1 到 3 之间");
-            }
-
-            const double multiplier =
-                definition.levelMultipliers[static_cast<std::size_t>(level - 1)];
-            if (multiplier <= kMinimumStat)
-            {
-                return fail(errorMessage, "单位等级倍率必须为正数");
-            }
-
-            stats.maxHealth =
-                static_cast<double>(definition.maxHealth) * multiplier;
-            stats.attackPower =
-                static_cast<double>(definition.attackPower) * multiplier;
-            stats.physicalDefense =
-                static_cast<double>(definition.physicalDefense) * multiplier;
-            stats.magicResistance = std::clamp(
-                static_cast<double>(definition.magicResistance) * multiplier,
-                0.0,
-                100.0);
-            stats.attackRange = definition.attackRange * multiplier;
-            stats.moveSpeed = definition.moveSpeed * multiplier;
-            stats.attackSpeed = std::clamp(
-                static_cast<double>(definition.attackSpeed) * multiplier,
-                0.0,
-                600.0);
-            stats.guardDamage = static_cast<int>(std::round(
-                static_cast<double>(definition.guardDamage) * multiplier));
-
-            if (stats.maxHealth <= kMinimumStat
-                || stats.attackRange < kMinimumStat
-                || stats.moveSpeed < kMinimumStat
-                || stats.guardDamage < 0)
-            {
-                return fail(errorMessage, "单位战斗属性必须满足非负约束");
-            }
-
-            return true;
+            const auto iterator = std::find_if(
+                factions.begin(),
+                factions.end(),
+                [&factionId](const FactionDefinition& faction)
+                {
+                    return faction.id == factionId;
+                });
+            return iterator == factions.end() ? nullptr : &*iterator;
         }
 
         bool validatePlayer(
@@ -134,6 +99,8 @@ namespace autochess::core
             const PlayerState& player,
             const MapDefinition& map,
             const std::vector<UnitDefinition>& definitions,
+            const FactionDefinition& faction,
+            const std::vector<FactionModifierDefinition>& modifiers,
             BattleUnitId& nextBattleUnitId,
             std::vector<BattleUnit>& output,
             std::string& errorMessage)
@@ -167,15 +134,23 @@ namespace autochess::core
                 battleUnit.side = ownedUnit->ownerSide;
                 battleUnit.basicAction = definition->basicAction;
                 battleUnit.basicDamageType = definition->basicDamageType;
-                if (!resolveStats(
+                if (!BattleStatResolver::resolve(
                         *definition,
                         ownedUnit->identity.level,
+                        faction,
+                        modifiers,
                         battleUnit.stats,
                         errorMessage))
                 {
                     return false;
                 }
 
+                // 此代码块保存技能前的基础属性和配置驱动的初始技力状态。
+                battleUnit.baseStats = battleUnit.stats;
+                battleUnit.skillId = definition->skillId;
+                battleUnit.currentMana =
+                    static_cast<double>(definition->initialMana);
+                battleUnit.maxMana = static_cast<double>(definition->maxMana);
                 battleUnit.position = centerOf(route->points.front());
                 battleUnit.routePoints = route->points;
                 battleUnit.nextRoutePointIndex =
@@ -193,6 +168,8 @@ namespace autochess::core
         const PlayerState& playerB,
         const MapDefinition& map,
         const std::vector<UnitDefinition>& definitions,
+        const std::vector<FactionDefinition>& factions,
+        const std::vector<FactionModifierDefinition>& modifiers,
         std::vector<BattleUnit>& output,
         std::string& errorMessage)
     {
@@ -210,12 +187,24 @@ namespace autochess::core
             return false;
         }
 
+        // 此代码块为双方分别解析分队，允许同一场战斗使用不同分队修正。
+        const FactionDefinition* factionA =
+            findFaction(factions, playerA.factionId);
+        const FactionDefinition* factionB =
+            findFaction(factions, playerB.factionId);
+        if (factionA == nullptr || factionB == nullptr)
+        {
+            return fail(errorMessage, "玩家分队缺少对应的分队定义");
+        }
+
         std::vector<BattleUnit> created;
         BattleUnitId nextBattleUnitId = 1;
         if (!appendPlayerUnits(
                 playerA,
                 map,
                 definitions,
+                *factionA,
+                modifiers,
                 nextBattleUnitId,
                 created,
                 errorMessage)
@@ -223,6 +212,8 @@ namespace autochess::core
                 playerB,
                 map,
                 definitions,
+                *factionB,
+                modifiers,
                 nextBattleUnitId,
                 created,
                 errorMessage))

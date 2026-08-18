@@ -1,6 +1,7 @@
 #include "core/Core.hpp"
 #include "core/combat/BattleSimulation.hpp"
 #include "core/combat/BattleSetupService.hpp"
+#include "core/combat/BattleStatResolver.hpp"
 #include "core/combat/BattleTypes.hpp"
 #include "core/combat/CombatRules.hpp"
 #include "core/combat/TargetSelector.hpp"
@@ -4682,6 +4683,8 @@ namespace
             playerB,
             bundle.maps.front(),
             bundle.units,
+            bundle.factions,
+            bundle.factionModifiers,
             units,
             setupError);
         runner.check(
@@ -4696,7 +4699,14 @@ namespace
                 == autochess::core::BattlePosition{1.5, 2.5}
             && units[0].nextRoutePointIndex == 1
             && units[0].routePoints.size() == 12
-            && units[0].health == 160.0;
+            && units[0].health == 160.0
+            && units[0].stats.attackPower == 22.0
+            && units[0].stats.physicalDefense == 22.0
+            && units[0].baseStats.attackPower == units[0].stats.attackPower
+            && units[0].skillId == "training_strike"
+            && units[0].currentMana == 0.0
+            && units[0].maxMana == 10.0
+            && !units[0].activeSkill.active;
         runner.check(
             firstUnitIsCorrect,
             "Battle setup preserves identity, route, and grid-center position");
@@ -4706,6 +4716,8 @@ namespace
             && units[1].ownedUnitId == 20
             && units[1].identity.level == 2
             && units[1].stats.maxHealth == 240.0
+            && units[1].stats.attackPower == 33.0
+            && units[1].stats.physicalDefense == 31.0
             && units[1].stats.guardDamage == 8
             && units[1].health == units[1].stats.maxHealth;
         runner.check(
@@ -4722,6 +4734,8 @@ namespace
                 playerB,
                 bundle.maps.front(),
                 noDefinitions,
+                bundle.factions,
+                bundle.factionModifiers,
                 unchanged,
                 setupError);
         runner.check(
@@ -4740,6 +4754,8 @@ namespace
                 invalidPlayerB,
                 bundle.maps.front(),
                 bundle.units,
+                bundle.factions,
+                bundle.factionModifiers,
                 unchanged,
                 setupError);
         runner.check(
@@ -4755,6 +4771,158 @@ namespace
         const double tolerance = 1.0e-9)
     {
         return std::abs(left - right) <= tolerance;
+    }
+
+    // 此函数验证等级属性和分队修正每次都从不可变定义重新计算。
+    int runBattleStatResolverTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+
+        // 此代码块加载正式定义并定位要覆盖的单位和三个分队。
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        const autochess::core::UnitDefinition* guard = nullptr;
+        const autochess::core::UnitDefinition* ranger = nullptr;
+        const autochess::core::FactionDefinition* defense = nullptr;
+        const autochess::core::FactionDefinition* assault = nullptr;
+        const autochess::core::FactionDefinition* route = nullptr;
+        for (const autochess::core::UnitDefinition& unit : bundle.units)
+        {
+            if (unit.id == "training_guard")
+            {
+                guard = &unit;
+            }
+            else if (unit.id == "ranger")
+            {
+                ranger = &unit;
+            }
+        }
+        for (const autochess::core::FactionDefinition& faction : bundle.factions)
+        {
+            if (faction.id == "training_team")
+            {
+                defense = &faction;
+            }
+            else if (faction.id == "assault_team")
+            {
+                assault = &faction;
+            }
+            else if (faction.id == "route_team")
+            {
+                route = &faction;
+            }
+        }
+        const bool definitionsFound = loaded
+            && guard != nullptr
+            && ranger != nullptr
+            && defense != nullptr
+            && assault != nullptr
+            && route != nullptr;
+        runner.check(
+            definitionsFound,
+            "BattleStatResolver receives units and all three factions");
+        if (!definitionsFound)
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码块验证防御分队加法和乘法修正的固定计算结果。
+        autochess::core::BattleStats defenseStats;
+        std::string errorMessage;
+        const bool defenseResolved = autochess::core::BattleStatResolver::resolve(
+            *guard,
+            1,
+            *defense,
+            bundle.factionModifiers,
+            defenseStats,
+            errorMessage);
+        runner.check(
+            defenseResolved
+                && errorMessage.empty()
+                && defenseStats.maxHealth == 160.0
+                && defenseStats.attackPower == 22.0
+                && defenseStats.physicalDefense == 22.0,
+            "BattleStatResolver applies defense faction modifiers once");
+
+        // 此代码块再次解析相同输入，确认第一次结果不会成为第二次基础值。
+        autochess::core::BattleStats repeatedStats;
+        const bool repeatedResolved = autochess::core::BattleStatResolver::resolve(
+            *guard,
+            1,
+            *defense,
+            bundle.factionModifiers,
+            repeatedStats,
+            errorMessage);
+        runner.check(
+            repeatedResolved
+                && repeatedStats.attackPower == defenseStats.attackPower
+                && repeatedStats.physicalDefense == defenseStats.physicalDefense,
+            "BattleStatResolver does not accumulate faction modifiers");
+
+        // 此代码块验证进攻分队攻速和路线分队移速各自只作用于目标单位。
+        autochess::core::BattleStats assaultStats;
+        autochess::core::BattleStats routeStats;
+        const bool assaultResolved = autochess::core::BattleStatResolver::resolve(
+            *ranger,
+            1,
+            *assault,
+            bundle.factionModifiers,
+            assaultStats,
+            errorMessage);
+        const bool routeResolved = autochess::core::BattleStatResolver::resolve(
+            *ranger,
+            1,
+            *route,
+            bundle.factionModifiers,
+            routeStats,
+            errorMessage);
+        runner.check(
+            assaultResolved
+                && routeResolved
+                && assaultStats.attackSpeed == 130.0
+                && nearlyEqual(routeStats.moveSpeed, 1.12)
+                && routeStats.attackSpeed == 110.0,
+            "BattleStatResolver isolates assault and route faction bonuses");
+
+        // 此代码块覆盖通配单位修正和非法运算的原子失败语义。
+        const std::vector<autochess::core::FactionModifierDefinition>
+            wildcardModifier{
+                {"wildcard", route->id, "*",
+                    autochess::core::FactionAttribute::AttackPower,
+                    autochess::core::FactionOperation::Add, 5.0}};
+        autochess::core::BattleStats wildcardStats;
+        const bool wildcardResolved = autochess::core::BattleStatResolver::resolve(
+            *ranger,
+            1,
+            *route,
+            wildcardModifier,
+            wildcardStats,
+            errorMessage);
+        auto invalidModifier = wildcardModifier;
+        invalidModifier.front().operation =
+            autochess::core::FactionOperation::Unknown;
+        autochess::core::BattleStats unchangedStats;
+        unchangedStats.maxHealth = 999.0;
+        const bool invalidResolved = autochess::core::BattleStatResolver::resolve(
+            *ranger,
+            1,
+            *route,
+            invalidModifier,
+            unchangedStats,
+            errorMessage);
+        runner.check(
+            wildcardResolved
+                && wildcardStats.attackPower == 33.0
+                && !invalidResolved
+                && !errorMessage.empty()
+                && unchangedStats.maxHealth == 999.0,
+            "BattleStatResolver supports wildcard units and rejects invalid operations");
+
+        return runner.failureCount();
     }
 
     int runCombatRulesTests()
@@ -5357,6 +5525,16 @@ int main()
     }
 
     std::cout << "[PASS] Economy integration scenario test suite\n";
+
+    // 此代码块运行分队战斗属性解析测试并传播任一失败。
+    const int battleStatResolverFailures = runBattleStatResolverTests();
+    assert(battleStatResolverFailures == 0);
+    if (battleStatResolverFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle stat resolver test suite\n";
 
     const int battleSetupFailures = runBattleSetupServiceTests();
     assert(battleSetupFailures == 0);
