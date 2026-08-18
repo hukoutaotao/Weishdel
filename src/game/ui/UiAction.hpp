@@ -14,7 +14,10 @@ namespace autochess::game
         ShowHelp,
         BackToMenu,
         ExitApplication,
-        SubmitCommand
+        SubmitCommand,
+        TogglePause,
+        RestartMatch,
+        PlayAgain
     };
 
     // 此结构把一次界面请求和可选核心命令封装为可消费消息。

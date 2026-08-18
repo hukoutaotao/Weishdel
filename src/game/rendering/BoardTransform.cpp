@@ -59,6 +59,15 @@ namespace autochess::game
             bounds.top + bounds.height / 2.0F);
     }
 
+    // 此函数使用连续坐标直接定位战斗单位而不重新取整到格子。
+    sf::Vector2f BoardTransform::battlePositionToPixel(
+        const core::BattlePosition position) const noexcept
+    {
+        return sf::Vector2f(
+            origin_.x + static_cast<float>(position.x) * tileSize_,
+            origin_.y + static_cast<float>(position.y) * tileSize_);
+    }
+
     // 此函数先验证棋盘边界再向下取整获得格子索引。
     std::optional<core::GridPosition> BoardTransform::pixelToGrid(
         const sf::Vector2f pixel) const noexcept

@@ -10,6 +10,7 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Clock.hpp>
 
+#include <cstdint>
 #include <memory>
 
 namespace autochess::game
@@ -57,6 +58,12 @@ namespace autochess::game
         // 此函数绘制第七天应用骨架的资源加载成功画面。
         void render();
 
+        // 此函数在当前选择不变的情况下事务式重建第一回合对局。
+        void restartCurrentGame();
+
+        // 此函数清除离开对局页面后不应继续更新的核心对象。
+        void clearMatchState() noexcept;
+
         sf::RenderWindow window_;
         sf::Font font_;
         core::ConfigBundle config_;
@@ -66,5 +73,8 @@ namespace autochess::game
         std::unique_ptr<Screen> screen_;
         sf::Clock frameClock_;
         float accumulatorSeconds_ = 0.0F;
+        // 此代码块保存暂停和结算停留的应用层固定帧状态。
+        bool paused_ = false;
+        std::uint64_t settlementHoldFrames_ = 0;
     };
 }

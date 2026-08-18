@@ -33,6 +33,9 @@ namespace autochess::game
         // 此函数显示最近一次核心命令的中文结果。
         void showCommandResult(const core::CommandResult& result);
 
+        // 此函数同步应用层暂停状态并阻止底层战斗控件响应。
+        void setPaused(bool paused) noexcept;
+
     private:
         struct Choice
         {
@@ -124,5 +127,12 @@ namespace autochess::game
         sf::Clock messageClock_;
         DragState drag_;
         UiAction pendingAction_;
+        // 此代码块保存暂停状态和后续交互控件的稳定句柄。
+        bool paused_ = false;
+        std::unique_ptr<Button> pauseButton_;
+        std::unique_ptr<Button> resumeButton_;
+        std::unique_ptr<Button> restartButton_;
+        std::unique_ptr<Button> playAgainButton_;
+        std::unique_ptr<Button> resultMenuButton_;
     };
 }

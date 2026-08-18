@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/combat/BattleTypes.hpp"
 #include "core/map/MapTypes.hpp"
 
 #include <SFML/Graphics/Rect.hpp>
@@ -27,6 +28,10 @@ namespace autochess::game
 
         // 此函数返回指定地图格子的像素中心。
         sf::Vector2f cellCenter(core::GridPosition position) const noexcept;
+
+        // 此函数把战斗单位的连续格坐标转换为窗口像素中心。
+        sf::Vector2f battlePositionToPixel(
+            core::BattlePosition position) const noexcept;
 
         // 此函数把棋盘内鼠标像素转换为格子，棋盘外返回空值。
         std::optional<core::GridPosition> pixelToGrid(

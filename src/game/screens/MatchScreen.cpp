@@ -318,6 +318,12 @@ namespace autochess::game
         messageClock_.restart();
     }
 
+    // 此函数只记录应用层暂停状态，具体停止模拟由 GameApp 执行。
+    void MatchScreen::setPaused(const bool paused) noexcept
+    {
+        paused_ = paused;
+    }
+
     // 此函数根据核心选择列表建立动态数量的选择按钮。
     void MatchScreen::rebuildChoices()
     {
