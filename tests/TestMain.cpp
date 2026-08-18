@@ -4045,6 +4045,13 @@ namespace
                 autochess::core::ConfigErrorCategory::ReferenceError,
                 17),
             "Unit loader rejects a missing skill reference");
+        runner.check(
+            loadUnitsMustFail(
+                testDataDirectory / "unit_invalid_heal_power.cfg",
+                skills,
+                autochess::core::ConfigErrorCategory::RangeError,
+                6),
+            "Unit loader rejects a healer without positive healing power");
 
         // 此代码段覆盖分队部署上限以及分队和单位引用错误。
         runner.check(
@@ -4172,6 +4179,7 @@ namespace
             medicUnitValid = medicUnitValid
                 || (unit.id == "medic"
                     && unit.basicAction == autochess::core::BasicAction::Heal
+                    && unit.attackPower == 16
                     && unit.skillId == "field_mend");
         }
 

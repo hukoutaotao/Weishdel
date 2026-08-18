@@ -252,7 +252,7 @@ random_seed=20260814
 | `name` | 字符串 | 非空显示名称 |
 | `tags` | ID 列表 | 至少一个，不得重复 |
 | `max_health` | 整数 | 大于 0 |
-| `attack_power` | 整数 | 大于或等于 0 |
+| `attack_power` | 整数 | 攻击行动时大于或等于 0；治疗行动时必须大于 0 |
 | `physical_defense` | 整数 | 大于或等于 0 |
 | `magic_resistance` | 整数 | `0` 到 `100` |
 | `attack_range` | 小数 | 大于 0，单位为格 |
@@ -270,7 +270,7 @@ random_seed=20260814
 条件规则：
 
 - `basic_action=attack` 时，`basic_damage_type` 必须为 `physical` 或 `magic`。
-- `basic_action=heal` 时，`basic_damage_type` 必须为 `none`。
+- `basic_action=heal` 时，`basic_damage_type` 必须为 `none`，`attack_power` 表示每次普通治疗的基础治疗量。
 - `level_multipliers` 只作用于最大生命、攻击力、物理防御和守卫伤害。
 - 魔法抗性、攻击距离、移动速度、攻击速度、价格和技力不随等级倍率变化。
 - 使用等级倍率得到整数属性时，统一使用 `std::round` 后转换为整数。

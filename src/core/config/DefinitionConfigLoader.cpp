@@ -651,9 +651,13 @@ namespace autochess::core
                 return false;
             }
             if (unit.basicAction == BasicAction::Heal
-                && !requireConfigRange(unit.basicDamageType == DamageType::None,
-                    section, path, "basic_damage_type",
-                    "在 heal 行动中必须是 none", error))
+                && (!requireConfigRange(
+                        unit.basicDamageType == DamageType::None,
+                        section, path, "basic_damage_type",
+                        "在 heal 行动中必须是 none", error)
+                    || !requireConfigRange(unit.attackPower > 0,
+                        section, path, "attack_power",
+                        "在 heal 行动中必须大于 0", error)))
             {
                 return false;
             }
