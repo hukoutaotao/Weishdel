@@ -1,6 +1,7 @@
 #include "core/match/Match.hpp"
 
 #include "core/match/RoundController.hpp"
+#include "core/combat/BattleSetupService.hpp"
 #include "core/economy/DeploymentService.hpp"
 #include "core/economy/MergeService.hpp"
 #include "core/economy/RosterService.hpp"
@@ -8,6 +9,7 @@
 #include "core/model/PlayerStateService.hpp"
 
 #include <utility>
+#include <limits>
 
 // 此命名空间实现选择状态机和统一命令入口。
 namespace autochess::core
@@ -62,6 +64,19 @@ namespace autochess::core
                 std::get_if<SelectAiStrategyCommand>(&command.payload))
         {
             return selectAiStrategy(command.actor, *payload);
+        }
+
+        // 此分支处理玩家或脚本发出的提前开战命令。
+        if (std::holds_alternative<StartCombatCommand>(command.payload))
+        {
+            return startCombat(command.actor);
+        }
+
+        // 此分支处理战斗单位主动技能释放命令。
+        if (const auto* payload =
+                std::get_if<ReleaseSkillCommand>(&command.payload))
+        {
+            return releaseSkill(command.actor, *payload);
         }
 
         return executePreparationCommand(command);
@@ -195,6 +210,7 @@ namespace autochess::core
         playersCreated_ = true;
         currentRound_ = 1;
         phase_ = MatchPhase::Preparation;
+        resetPreparationCountdown();
         return success("电脑分队选择成功，第一回合准备开始");
     }
 
@@ -422,6 +438,271 @@ namespace autochess::core
         return fail(
             CommandErrorCode::InvalidPhase,
             "当前准备阶段尚不接受该类型命令");
+    }
+
+    // 此函数验证开战权限并从双方当前部署创建临时战斗单位。
+    CommandResult Match::startCombat(const MapSide actor)
+    {
+        // 此分支只允许从准备阶段进入战斗。
+        if (phase_ != MatchPhase::Preparation)
+        {
+            return fail(
+                CommandErrorCode::InvalidPhase,
+                "当前阶段不能开始战斗");
+        }
+
+        // 此分支只允许 A 方玩家提前结束准备阶段。
+        if (actor != MapSide::A)
+        {
+            return fail(
+                CommandErrorCode::InvalidActor,
+                "只有A方玩家可以提前开始战斗");
+        }
+
+        const MapDefinition* map = findMap(selectedMapId_);
+        // 此分支拒绝地图或玩家尚未正确创建的异常状态。
+        if (map == nullptr || !playersCreated_)
+        {
+            return fail(
+                CommandErrorCode::BattleNotReady,
+                "地图或双方玩家尚未准备完成");
+        }
+
+        std::vector<BattleUnit> units;
+        std::string errorMessage;
+        const bool created = BattleSetupService::createUnits(
+            playerA_,
+            playerB_,
+            *map,
+            config_.units,
+            config_.factions,
+            config_.factionModifiers,
+            units,
+            errorMessage);
+        // 此分支在战斗单位创建失败时保留准备阶段状态。
+        if (!created)
+        {
+            return CommandResult{
+                false,
+                CommandErrorCode::BattleNotReady,
+                "无法创建战斗单位：" + errorMessage};
+        }
+
+        battle_ = std::make_unique<BattleSimulation>(
+            std::move(units),
+            *map,
+            config_.gameConfig.combatTimeoutSeconds,
+            config_.skills);
+        preparationFramesRemaining_ = 0;
+        phase_ = MatchPhase::Combat;
+        return success("战斗开始");
+    }
+
+    // 此函数确保技能只能由其所属阵营在战斗阶段释放。
+    CommandResult Match::releaseSkill(
+        const MapSide actor,
+        const ReleaseSkillCommand& command)
+    {
+        // 此分支拒绝战斗阶段以外的技能命令。
+        if (phase_ != MatchPhase::Combat || battle_ == nullptr)
+        {
+            return fail(
+                CommandErrorCode::InvalidPhase,
+                "当前阶段不能释放技能");
+        }
+
+        // 此分支拒绝未知阵营发出的技能命令。
+        if (actor != MapSide::A && actor != MapSide::B)
+        {
+            return fail(
+                CommandErrorCode::InvalidActor,
+                "技能命令执行方无效");
+        }
+
+        const BattleUnit* caster = nullptr;
+        // 此循环在当前战斗快照中查找技能施放者。
+        for (const BattleUnit& unit : battle_->units())
+        {
+            // 此分支在找到目标战斗 ID 时停止搜索。
+            if (unit.id == command.battleUnitId)
+            {
+                caster = &unit;
+                break;
+            }
+        }
+
+        // 此分支拒绝当前战斗中不存在的施放者 ID。
+        if (caster == nullptr)
+        {
+            return fail(
+                CommandErrorCode::UnitNotFound,
+                "找不到要释放技能的战斗单位");
+        }
+
+        // 此分支拒绝控制器操作对手战斗单位。
+        if (caster->side != actor)
+        {
+            return fail(
+                CommandErrorCode::WrongOwner,
+                "不能让对手单位释放技能");
+        }
+
+        // 此分支把技力不足、死亡或技能条件不满足统一报告为技能不可用。
+        if (!battle_->releaseSkill(command.battleUnitId))
+        {
+            return fail(
+                CommandErrorCode::SkillUnavailable,
+                "当前单位尚不能释放技能");
+        }
+
+        return success("技能释放成功");
+    }
+
+    // 此函数根据当前阶段恰好推进一个固定模拟帧或一次结算边界。
+    bool Match::step()
+    {
+        // 此分支推进准备倒计时并在归零时自动开始战斗。
+        if (phase_ == MatchPhase::Preparation)
+        {
+            // 此分支确保正数倒计时每次只减少一个固定帧。
+            if (preparationFramesRemaining_ > 0)
+            {
+                --preparationFramesRemaining_;
+            }
+
+            // 此分支在倒计时归零时复用 A 方提前开战入口。
+            if (preparationFramesRemaining_ == 0)
+            {
+                return startCombat(MapSide::A).success;
+            }
+
+            return true;
+        }
+
+        // 此分支推进当前战斗并在结束后保留一个可观察结算阶段。
+        if (phase_ == MatchPhase::Combat)
+        {
+            // 此分支拒绝战斗阶段缺失模拟对象的内部不一致状态。
+            if (battle_ == nullptr)
+            {
+                return false;
+            }
+
+            // 此分支只在尚未结束时推进一个战斗固定帧。
+            if (!battle_->isFinished())
+            {
+                battle_->step();
+            }
+
+            // 此分支在战斗结束后切换到独立的回合结算阶段。
+            if (battle_->isFinished())
+            {
+                phase_ = MatchPhase::RoundSettlement;
+            }
+
+            return true;
+        }
+
+        // 此分支在战斗结束后的下一次调用中执行持久状态结算。
+        if (phase_ == MatchPhase::RoundSettlement)
+        {
+            return settleCurrentRound();
+        }
+
+        return false;
+    }
+
+    // 此函数回写战斗结果并根据最终胜负决定下一阶段。
+    bool Match::settleCurrentRound()
+    {
+        // 此分支要求结算阶段必须仍持有已结束的战斗模拟。
+        if (battle_ == nullptr || !battle_->isFinished())
+        {
+            return false;
+        }
+
+        PlayerState updatedPlayerA = playerA_;
+        PlayerState updatedPlayerB = playerB_;
+        ShopState updatedShopA = shopA_;
+        ShopState updatedShopB = shopB_;
+        std::mt19937 updatedRandomEngine = randomEngine_;
+        RoundSummary updatedRound;
+        const CommandResult settlement = RoundController::settleBattle(
+            updatedPlayerA,
+            updatedPlayerB,
+            battle_->summary(),
+            currentRound_,
+            updatedRound);
+        // 此分支在结算服务拒绝摘要时保留战斗和结算阶段供诊断。
+        if (!settlement.success)
+        {
+            return false;
+        }
+
+        const MatchResultSummary updatedResult =
+            RoundController::determineMatchResult(
+            updatedPlayerA,
+            updatedPlayerB,
+            config_.gameConfig,
+            currentRound_);
+
+        // 此分支在守卫归零或最大回合后进入最终结果阶段。
+        if (updatedResult.outcome != MatchOutcome::Ongoing)
+        {
+            playerA_ = std::move(updatedPlayerA);
+            playerB_ = std::move(updatedPlayerB);
+            lastRound_ = std::move(updatedRound);
+            result_ = updatedResult;
+            battle_.reset();
+            phase_ = MatchPhase::MatchResult;
+            return true;
+        }
+
+        const CommandResult preparation =
+            RoundController::beginPreparation(
+                updatedPlayerA,
+                updatedPlayerB,
+                updatedShopA,
+                updatedShopB,
+                config_.gameConfig,
+                config_.units,
+                config_.factions,
+                config_.factionModifiers,
+                updatedRound.loserSide,
+                updatedRandomEngine);
+        // 此分支在下一回合初始化失败时保留当前结算阶段。
+        if (!preparation.success)
+        {
+            return false;
+        }
+
+        playerA_ = std::move(updatedPlayerA);
+        playerB_ = std::move(updatedPlayerB);
+        shopA_ = std::move(updatedShopA);
+        shopB_ = std::move(updatedShopB);
+        randomEngine_ = std::move(updatedRandomEngine);
+        lastRound_ = std::move(updatedRound);
+        result_ = updatedResult;
+        battle_.reset();
+        ++currentRound_;
+        resetPreparationCountdown();
+        phase_ = MatchPhase::Preparation;
+        return true;
+    }
+
+    // 此函数把配置秒数安全转换为固定六十帧倒计时。
+    void Match::resetPreparationCountdown() noexcept
+    {
+        const int seconds = config_.gameConfig.preparationSeconds;
+        // 此分支只允许正数准备时间产生倒计时帧数。
+        if (seconds <= 0)
+        {
+            preparationFramesRemaining_ = 0;
+            return;
+        }
+
+        preparationFramesRemaining_ =
+            static_cast<std::uint64_t>(seconds) * 60U;
     }
 
     // 此函数按阵营返回可修改的玩家状态供内部命令处理使用。
@@ -656,6 +937,12 @@ namespace autochess::core
                             deployment.first});
                 }
             }
+        }
+
+        // 此分支在战斗存在时复制全部实时战斗单位供界面和控制器读取。
+        if (battle_ != nullptr)
+        {
+            view.battleUnits = battle_->units();
         }
 
         return view;

@@ -1,11 +1,13 @@
 #pragma once
 
 #include "core/config/ConfigBundleLoader.hpp"
+#include "core/combat/BattleSimulation.hpp"
 #include "core/economy/EconomyTypes.hpp"
 #include "core/match/GameCommand.hpp"
 #include "core/match/ReadOnlyGameView.hpp"
 
 #include <random>
+#include <memory>
 #include <string>
 
 // 此命名空间声明拥有完整对局状态的核心编排对象。
@@ -20,6 +22,9 @@ namespace autochess::core
 
         // 此函数验证并执行一条来自真人、脚本或 AI 的统一命令。
         CommandResult submit(const GameCommand& command);
+
+        // 此函数按照固定六十分之一秒推进准备倒计时、战斗或结算。
+        bool step();
 
         // 此函数返回当前对局阶段供界面和测试判断可用操作。
         MatchPhase phase() const noexcept;
@@ -61,6 +66,20 @@ namespace autochess::core
         // 此函数把准备阶段经济命令转发到现有规则服务。
         CommandResult executePreparationCommand(const GameCommand& command);
 
+        // 此函数验证提前开战命令并创建本回合战斗模拟。
+        CommandResult startCombat(MapSide actor);
+
+        // 此函数验证技能命令的阶段和归属后转交战斗模拟。
+        CommandResult releaseSkill(
+            MapSide actor,
+            const ReleaseSkillCommand& command);
+
+        // 此函数结算当前战斗并推进到下一回合或最终结果。
+        bool settleCurrentRound();
+
+        // 此函数根据配置重置准备阶段的固定帧倒计时。
+        void resetPreparationCountdown() noexcept;
+
         // 此函数按阵营返回可修改的玩家状态。
         PlayerState* mutablePlayer(MapSide side) noexcept;
 
@@ -96,5 +115,6 @@ namespace autochess::core
         std::uint64_t preparationFramesRemaining_ = 0;
         std::optional<RoundSummary> lastRound_;
         MatchResultSummary result_;
+        std::unique_ptr<BattleSimulation> battle_;
     };
 }

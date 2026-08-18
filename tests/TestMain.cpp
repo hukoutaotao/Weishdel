@@ -889,6 +889,216 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证固定帧倒计时、战斗、可观察结算和跨回合推进形成闭环。
+    int runMatchRoundFlowTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(loaded, "Match round flow loads formal configuration");
+        // 此分支在正式配置加载失败时停止完整回合测试。
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        bundle.gameConfig.preparationSeconds = 1;
+        bundle.gameConfig.combatTimeoutSeconds = 1;
+        bundle.gameConfig.maxRounds = 2;
+        autochess::core::Match match(bundle);
+        const bool selected =
+            match.submit({
+                autochess::core::MapSide::A,
+                autochess::core::SelectMapCommand{"map_01"}}).success
+            && match.submit({
+                autochess::core::MapSide::A,
+                autochess::core::SelectFactionCommand{"training_team"}})
+                   .success
+            && match.submit({
+                autochess::core::MapSide::A,
+                autochess::core::SelectAiStrategyCommand{
+                    autochess::core::AiStrategyKind::Offensive}}).success
+            && match.submit({
+                autochess::core::MapSide::B,
+                autochess::core::SelectFactionCommand{"assault_team"}})
+                   .success;
+        runner.check(
+            selected
+                && match.viewFor(autochess::core::MapSide::A)
+                       .preparationFramesRemaining == 60,
+            "Match round flow starts a sixty-frame preparation");
+        // 此分支在首轮准备无法创建时停止战斗流程测试。
+        if (!selected)
+        {
+            return runner.failureCount();
+        }
+
+        const auto purchaseA = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::PurchaseUnitCommand{0}});
+        const auto purchaseB = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::PurchaseUnitCommand{0}});
+        autochess::core::GridPosition startA;
+        autochess::core::GridPosition startB;
+        bool foundA = false;
+        bool foundB = false;
+        const auto preparedView =
+            match.viewFor(autochess::core::MapSide::A);
+        // 此循环定位正式地图双方各自的第一个部署起点。
+        for (const autochess::core::Route& route
+             : preparedView.selectedMap->routes)
+        {
+            // 此分支记录尚未找到的 A 方部署起点。
+            if (route.side == autochess::core::MapSide::A && !foundA)
+            {
+                startA = route.start;
+                foundA = true;
+            }
+            // 此分支记录尚未找到的 B 方部署起点。
+            else if (route.side == autochess::core::MapSide::B && !foundB)
+            {
+                startB = route.start;
+                foundB = true;
+            }
+        }
+
+        const auto deployA = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::MoveToDeploymentCommand{1, startA}});
+        const auto deployB = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::MoveToDeploymentCommand{2, startB}});
+        runner.check(
+            purchaseA.success
+                && purchaseB.success
+                && foundA
+                && foundB
+                && deployA.success
+                && deployB.success,
+            "Match round flow purchases and deploys both sides");
+
+        const auto sideBStart = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::StartCombatCommand{}});
+        const auto sideAStart = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::StartCombatCommand{}});
+        const auto combatView =
+            match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            !sideBStart.success
+                && sideBStart.errorCode
+                    == autochess::core::CommandErrorCode::InvalidActor
+                && sideAStart.success
+                && combatView.phase == autochess::core::MatchPhase::Combat
+                && combatView.battleUnits.size() == 2,
+            "Match permits only side A to start a ready battle");
+
+        const auto purchaseDuringCombat = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::PurchaseUnitCommand{1}});
+        autochess::core::BattleUnitId sideABattleId =
+            autochess::core::InvalidBattleUnitId;
+        // 此循环查找 A 方战斗单位以验证技能命令权限。
+        for (const autochess::core::BattleUnit& unit
+             : combatView.battleUnits)
+        {
+            // 此分支记录 A 方战斗单位的临时 ID。
+            if (unit.side == autochess::core::MapSide::A)
+            {
+                sideABattleId = unit.id;
+                break;
+            }
+        }
+
+        const auto wrongSkillOwner = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::ReleaseSkillCommand{sideABattleId}});
+        const auto insufficientMana = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::ReleaseSkillCommand{sideABattleId}});
+        runner.check(
+            !purchaseDuringCombat.success
+                && purchaseDuringCombat.errorCode
+                    == autochess::core::CommandErrorCode::InvalidPhase
+                && !wrongSkillOwner.success
+                && wrongSkillOwner.errorCode
+                    == autochess::core::CommandErrorCode::WrongOwner
+                && !insufficientMana.success
+                && insufficientMana.errorCode
+                    == autochess::core::CommandErrorCode::SkillUnavailable,
+            "Match enforces combat command phase, ownership, and mana");
+
+        int combatFrames = 0;
+        // 此循环推进第一回合直到战斗结束并进入可观察结算阶段。
+        while (match.phase() == autochess::core::MatchPhase::Combat
+               && combatFrames < 120)
+        {
+            match.step();
+            ++combatFrames;
+        }
+        runner.check(
+            match.phase()
+                    == autochess::core::MatchPhase::RoundSettlement
+                && !match.viewFor(autochess::core::MapSide::A)
+                        .lastRound.has_value(),
+            "Match exposes settlement before persistent state writeback");
+
+        const int goldABeforeSettlement =
+            match.playerState(autochess::core::MapSide::A)->gold;
+        const bool settled = match.step();
+        const auto secondPreparation =
+            match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            settled
+                && secondPreparation.phase
+                    == autochess::core::MatchPhase::Preparation
+                && secondPreparation.currentRound == 2
+                && secondPreparation.lastRound.has_value()
+                && secondPreparation.preparationFramesRemaining == 60
+                && secondPreparation.self->gold
+                    == goldABeforeSettlement + 5,
+            "Match settles round one and initializes round two");
+
+        // 此循环推进倒计时到最后一个准备帧但不提前进入战斗。
+        for (int frame = 0; frame < 59; ++frame)
+        {
+            match.step();
+        }
+        runner.check(
+            match.phase() == autochess::core::MatchPhase::Preparation
+                && match.viewFor(autochess::core::MapSide::A)
+                       .preparationFramesRemaining == 1,
+            "Match decrements preparation by exactly one frame");
+
+        match.step();
+        runner.check(
+            match.phase() == autochess::core::MatchPhase::Combat,
+            "Match automatically starts combat when countdown reaches zero");
+        match.step();
+        runner.check(
+            match.phase()
+                == autochess::core::MatchPhase::RoundSettlement,
+            "Match resolves an empty deployment battle deterministically");
+        match.step();
+        const auto finalView =
+            match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            finalView.phase == autochess::core::MatchPhase::MatchResult
+                && finalView.result.completedRounds == 2
+                && finalView.result.outcome
+                    == autochess::core::MatchOutcome::Draw
+                && !match.step(),
+            "Match ends at maximum rounds and becomes idempotent");
+
+        return runner.failureCount();
+    }
+
     int runPriceRulesTests()
     {
         TestRunner runner;
@@ -6960,6 +7170,16 @@ int main()
     }
 
     std::cout << "[PASS] Match preparation command test suite\n";
+
+    const int matchRoundFlowFailures = runMatchRoundFlowTests();
+    assert(matchRoundFlowFailures == 0);
+    // 此分支把完整回合流测试失败转换为非零退出码。
+    if (matchRoundFlowFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Match round flow test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);
