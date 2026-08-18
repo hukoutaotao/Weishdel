@@ -3,6 +3,7 @@
 #include "game/rendering/MapRenderer.hpp"
 #include "game/rendering/UnitRenderer.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <utility>
 
@@ -53,11 +54,6 @@ namespace autochess::game
         hud_.setCharacterSize(19);
         hud_.setFillColor(sf::Color(225, 228, 238));
         hud_.setPosition(180.0F, 24.0F);
-
-        shopTitle_.setFont(font_);
-        shopTitle_.setCharacterSize(26);
-        shopTitle_.setFillColor(sf::Color(235, 238, 248));
-        shopTitle_.setPosition(880.0F, 72.0F);
 
         reserveTitle_.setFont(font_);
         reserveTitle_.setString(L"备用区");
@@ -118,26 +114,71 @@ namespace autochess::game
                 showRoutes_ ? L"隐藏路线" : L"显示路线");
         }
 
-        // 此代码块把准备阶段商店卡片点击转换为对应槽位购买命令。
-        for (const ShopCard& card : shopCards_)
+        // 此代码块让两个页签只切换右侧列表而不触碰核心状态。
+        if (shopTabButton_ != nullptr && shopTabButton_->handleEvent(event))
         {
-            if (card.button != nullptr && card.button->handleEvent(event))
+            showDeathList_ = false;
+            refreshPreparationWidgets();
+            return;
+        }
+        if (deathTabButton_ != nullptr && deathTabButton_->handleEvent(event))
+        {
+            showDeathList_ = true;
+            refreshPreparationWidgets();
+            return;
+        }
+
+        // 此代码块只处理当前可见页签中的购买或复活按钮。
+        if (showDeathList_)
+        {
+            for (const ReviveCard& card : reviveCards_)
             {
-                pendingAction_.kind = UiActionKind::SubmitCommand;
-                pendingAction_.command = core::GameCommand{
-                    core::MapSide::A,
-                    core::PurchaseUnitCommand{card.slot}};
-                return;
+                if (card.button != nullptr
+                    && card.button->handleEvent(event))
+                {
+                    pendingAction_.kind = UiActionKind::SubmitCommand;
+                    pendingAction_.command = core::GameCommand{
+                        core::MapSide::A,
+                        core::ReviveUnitCommand{card.unitId}};
+                    return;
+                }
+            }
+        }
+        else
+        {
+            for (const ShopCard& card : shopCards_)
+            {
+                if (card.button != nullptr
+                    && card.button->handleEvent(event))
+                {
+                    pendingAction_.kind = UiActionKind::SubmitCommand;
+                    pendingAction_.command = core::GameCommand{
+                        core::MapSide::A,
+                        core::PurchaseUnitCommand{card.slot}};
+                    return;
+                }
             }
         }
 
-        // 此代码块把刷新按钮点击转换为无参数刷新命令。
-        if (refreshButton_ != nullptr && refreshButton_->handleEvent(event))
+        // 此代码块只在商店页签把刷新按钮点击转换为刷新命令。
+        if (!showDeathList_
+            && refreshButton_ != nullptr
+            && refreshButton_->handleEvent(event))
         {
             pendingAction_.kind = UiActionKind::SubmitCommand;
             pendingAction_.command = core::GameCommand{
                 core::MapSide::A,
                 core::RefreshShopCommand{}};
+            return;
+        }
+
+        // 此代码块把可用的提前开始按钮转换为统一开战命令。
+        if (startButton_ != nullptr && startButton_->handleEvent(event))
+        {
+            pendingAction_.kind = UiActionKind::SubmitCommand;
+            pendingAction_.command = core::GameCommand{
+                core::MapSide::A,
+                core::StartCombatCommand{}};
             return;
         }
 
@@ -155,8 +196,12 @@ namespace autochess::game
     // 此函数绘制选择标题、阶段说明、全部选项和最近命令结果。
     void MatchScreen::draw(sf::RenderTarget& target) const
     {
-        // 此代码块在选定地图后的所有阶段绘制棋盘和路线开关。
-        if (view_.selectedMap.has_value() && boardTransform_.valid())
+        // 此代码块只在准备、战斗和回合结算阶段绘制已经选定的棋盘。
+        if (view_.selectedMap.has_value()
+            && boardTransform_.valid()
+            && (view_.phase == core::MatchPhase::Preparation
+                || view_.phase == core::MatchPhase::Combat
+                || view_.phase == core::MatchPhase::RoundSettlement))
         {
             MapRenderer::draw(
                 target,
@@ -169,23 +214,49 @@ namespace autochess::game
             }
         }
 
-        // 此代码块在准备阶段绘制经济 HUD、商店标题、六槽和刷新按钮。
+        // 此代码块在准备阶段绘制经济 HUD、页签、当前列表和操作按钮。
         if (view_.phase == core::MatchPhase::Preparation)
         {
             target.draw(hud_);
-            target.draw(shopTitle_);
-            for (const ShopCard& card : shopCards_)
+            if (shopTabButton_ != nullptr)
             {
-                if (card.button != nullptr)
+                shopTabButton_->draw(target);
+            }
+            if (deathTabButton_ != nullptr)
+            {
+                deathTabButton_->draw(target);
+            }
+
+            // 此代码块根据当前页签只绘制商店卡片或复活按钮。
+            if (showDeathList_)
+            {
+                for (const ReviveCard& card : reviveCards_)
                 {
-                    card.button->draw(target);
+                    if (card.button != nullptr)
+                    {
+                        card.button->draw(target);
+                    }
                 }
             }
-            if (refreshButton_ != nullptr)
+            else
             {
-                refreshButton_->draw(target);
+                for (const ShopCard& card : shopCards_)
+                {
+                    if (card.button != nullptr)
+                    {
+                        card.button->draw(target);
+                    }
+                }
+                if (refreshButton_ != nullptr)
+                {
+                    refreshButton_->draw(target);
+                }
             }
             drawSellZone(target);
+            if (startButton_ != nullptr)
+            {
+                startButton_->draw(target);
+            }
             drawPreparationUnits(target);
         }
 
@@ -252,8 +323,13 @@ namespace autochess::game
     {
         choices_.clear();
         shopCards_.clear();
+        reviveCards_.clear();
         routeToggleButton_.reset();
+        shopTabButton_.reset();
+        deathTabButton_.reset();
         refreshButton_.reset();
+        startButton_.reset();
+        showDeathList_ = false;
         message_.setString(L"");
 
         title_.setPosition(470.0F, 80.0F);
@@ -326,7 +402,7 @@ namespace autochess::game
                 choices_.push_back(std::move(choice));
             }
         }
-        else
+        else if (view_.phase == core::MatchPhase::Preparation)
         {
             title_.setString(L"准备阶段");
             hint_.setString(L"蓝色为己方部署格，红色为电脑部署格");
@@ -338,6 +414,18 @@ namespace autochess::game
                 sf::FloatRect(690.0F, 18.0F, 170.0F, 46.0F),
                 L"显示路线",
                 20);
+
+            // 此代码块建立商店和死亡列表两个互斥页签按钮。
+            shopTabButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(880.0F, 72.0F, 178.0F, 40.0F),
+                L"【商店】",
+                19);
+            deathTabButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(1070.0F, 72.0F, 178.0F, 40.0F),
+                L"死亡列表 (0)",
+                19);
 
             // 此代码块为正式六槽商店建立两列三行的稳定按钮布局。
             if (view_.selfShop.has_value())
@@ -354,9 +442,9 @@ namespace autochess::game
                         font_,
                         sf::FloatRect(
                             880.0F + 190.0F * static_cast<float>(column),
-                            112.0F + 102.0F * static_cast<float>(row),
+                            122.0F + 96.0F * static_cast<float>(row),
                             178.0F,
-                            86.0F),
+                            80.0F),
                         L"商品",
                         19);
                     shopCards_.push_back(std::move(card));
@@ -365,23 +453,71 @@ namespace autochess::game
 
             refreshButton_ = std::make_unique<Button>(
                 font_,
-                sf::FloatRect(880.0F, 430.0F, 368.0F, 52.0F),
+                sf::FloatRect(880.0F, 420.0F, 368.0F, 52.0F),
                 L"刷新商店",
+                21);
+
+            // 此代码块建立始终位于右侧底部的提前开战按钮。
+            startButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(880.0F, 570.0F, 368.0F, 52.0F),
+                L"电脑正在准备",
                 21);
             refreshPreparationWidgets();
         }
+        else if (view_.phase == core::MatchPhase::Combat)
+        {
+            title_.setString(L"战斗进行中");
+            hint_.setString(L"第 8 天接入完整战斗界面");
+            title_.setPosition(910.0F, 220.0F);
+            hint_.setPosition(890.0F, 290.0F);
+            message_.setPosition(890.0F, 650.0F);
+        }
+        else if (view_.phase == core::MatchPhase::RoundSettlement)
+        {
+            title_.setString(L"回合结算");
+            hint_.setString(L"正在结算守卫伤害、单位状态和下一回合资源");
+            title_.setPosition(500.0F, 270.0F);
+            hint_.setPosition(365.0F, 350.0F);
+        }
+        else if (view_.phase == core::MatchPhase::MatchResult)
+        {
+            title_.setString(L"对局结束");
+            title_.setPosition(535.0F, 220.0F);
+
+            // 此代码块把核心最终结果转换为静态中文胜负和守卫摘要。
+            sf::String outcome = L"对局结果未知";
+            if (view_.result.outcome == core::MatchOutcome::SideAWin)
+            {
+                outcome = L"你获胜了";
+            }
+            else if (view_.result.outcome == core::MatchOutcome::SideBWin)
+            {
+                outcome = L"电脑获胜";
+            }
+            else if (view_.result.outcome == core::MatchOutcome::Draw)
+            {
+                outcome = L"本局平局";
+            }
+
+            std::wostringstream resultStream;
+            resultStream << outcome.toWideString() << L"\n完成回合："
+                         << view_.result.completedRounds
+                         << L"    我方守卫：" << view_.result.guardValueA
+                         << L"    敌方守卫：" << view_.result.guardValueB;
+            hint_.setString(resultStream.str());
+            hint_.setPosition(390.0F, 310.0F);
+        }
     }
 
-    // 此函数从只读快照生成准备 HUD 并同步全部商店按钮。
+    // 此函数从只读快照生成准备 HUD 并同步页签、商店和开战按钮。
     void MatchScreen::refreshPreparationWidgets()
     {
         // 此代码块在非准备阶段或缺少玩家数据时保持控件为空。
         if (view_.phase != core::MatchPhase::Preparation
-            || !view_.self.has_value()
-            || !view_.selfShop.has_value())
+            || !view_.self.has_value())
         {
             hud_.setString(L"");
-            shopTitle_.setString(L"");
             return;
         }
 
@@ -398,31 +534,48 @@ namespace autochess::game
                   << L"    敌方守卫 " << opponentGuard
                   << L"    剩余 " << secondsRemaining << L" 秒";
         hud_.setString(hudStream.str());
-        shopTitle_.setString(L"商店");
 
-        const core::ShopState& shop = view_.selfShop.value();
-        // 此代码块逐槽显示核心价格并禁用已经购买的空商品。
-        for (ShopCard& card : shopCards_)
+        // 此代码块用书名号标明当前页签并实时显示死亡单位数量。
+        if (shopTabButton_ != nullptr)
         {
-            if (card.button == nullptr || card.slot >= shop.offers.size())
-            {
-                continue;
-            }
-            const std::optional<core::ShopOffer>& offer =
-                shop.offers[card.slot];
-            if (!offer.has_value())
-            {
-                card.button->setLabel(L"已购买");
-                card.button->setEnabled(false);
-                continue;
-            }
+            shopTabButton_->setLabel(
+                showDeathList_ ? L"商店" : L"【商店】");
+        }
+        if (deathTabButton_ != nullptr)
+        {
+            sf::String label = showDeathList_ ? L"【死亡列表 (" : L"死亡列表 (";
+            label += sf::String(std::to_wstring(player.deadUnits.size()));
+            label += showDeathList_ ? L")】" : L")";
+            deathTabButton_->setLabel(label);
+        }
+        syncReviveCards();
 
-            sf::String label = unitName(offer->unitId);
-            label += L"  Lv.1\n";
-            label += sf::String(std::to_wstring(offer->displayedPrice));
-            label += L" 金币";
-            card.button->setLabel(label);
-            card.button->setEnabled(true);
+        // 此代码块在商店快照存在时逐槽显示核心价格和购买状态。
+        if (view_.selfShop.has_value())
+        {
+            const core::ShopState& shop = view_.selfShop.value();
+            for (ShopCard& card : shopCards_)
+            {
+                if (card.button == nullptr || card.slot >= shop.offers.size())
+                {
+                    continue;
+                }
+                const std::optional<core::ShopOffer>& offer =
+                    shop.offers[card.slot];
+                if (!offer.has_value())
+                {
+                    card.button->setLabel(L"已购买");
+                    card.button->setEnabled(false);
+                    continue;
+                }
+
+                sf::String label = unitName(offer->unitId);
+                label += L"  Lv.1\n";
+                label += sf::String(std::to_wstring(offer->displayedPrice));
+                label += L" 金币";
+                card.button->setLabel(label);
+                card.button->setEnabled(true);
+            }
         }
 
         // 此代码块让刷新按钮显示正式配置中的费用但仍允许核心报告金币不足。
@@ -434,6 +587,76 @@ namespace autochess::game
             label += L" 金币";
             refreshButton_->setLabel(label);
             refreshButton_->setEnabled(true);
+        }
+
+        // 此代码块在电脑尚无部署时禁用开战按钮并显示等待原因。
+        if (startButton_ != nullptr)
+        {
+            const bool computerReady = view_.opponent.available
+                && !view_.opponent.deployments.empty();
+            startButton_->setLabel(
+                computerReady ? L"提前开始战斗" : L"电脑正在准备");
+            startButton_->setEnabled(computerReady);
+        }
+    }
+
+    // 此函数比较稳定 ID 序列并只在死亡列表改变时重建复活按钮。
+    void MatchScreen::syncReviveCards()
+    {
+        // 此代码块在玩家快照缺失时清空无法继续使用的死亡列表控件。
+        if (!view_.self.has_value())
+        {
+            reviveCards_.clear();
+            return;
+        }
+
+        const std::vector<core::OwnedUnit>& deadUnits =
+            view_.self->deadUnits;
+        const std::size_t visibleCount =
+            std::min<std::size_t>(deadUnits.size(), 8U);
+        bool needsRebuild = reviveCards_.size() != visibleCount;
+
+        // 此代码块在数量相同的情况下继续比较每个死亡单位 ID。
+        if (!needsRebuild)
+        {
+            for (std::size_t index = 0; index < visibleCount; ++index)
+            {
+                if (reviveCards_[index].unitId != deadUnits[index].id)
+                {
+                    needsRebuild = true;
+                    break;
+                }
+            }
+        }
+        if (!needsRebuild)
+        {
+            return;
+        }
+
+        reviveCards_.clear();
+        // 此代码块按两列四行建立最多八个稳定复活按钮。
+        for (std::size_t index = 0; index < visibleCount; ++index)
+        {
+            const core::OwnedUnit& unit = deadUnits[index];
+            const std::size_t column = index % 2;
+            const std::size_t row = index / 2;
+            sf::String label = unitName(unit.identity.unitId);
+            label += L"  Lv.";
+            label += sf::String(std::to_wstring(unit.identity.level));
+            label += L"\n点击复活";
+
+            ReviveCard card;
+            card.unitId = unit.id;
+            card.button = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(
+                    880.0F + 190.0F * static_cast<float>(column),
+                    122.0F + 74.0F * static_cast<float>(row),
+                    178.0F,
+                    64.0F),
+                label,
+                18);
+            reviveCards_.push_back(std::move(card));
         }
     }
 

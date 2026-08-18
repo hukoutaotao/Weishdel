@@ -47,6 +47,13 @@ namespace autochess::game
             std::size_t slot = 0;
         };
 
+        // 此结构把一个死亡单位 ID 与对应复活按钮稳定绑定。
+        struct ReviveCard
+        {
+            std::unique_ptr<Button> button;
+            core::OwnedUnitId unitId = core::InvalidOwnedUnitId;
+        };
+
         struct DragState
         {
             bool active = false;
@@ -60,8 +67,11 @@ namespace autochess::game
         // 此函数把一个选择项转换为当前阶段对应的 A 方命令。
         void submitChoice(const Choice& choice);
 
-        // 此函数根据最新快照同步 HUD、商店标题和按钮可用状态。
+        // 此函数根据最新快照同步 HUD、页签和准备按钮状态。
         void refreshPreparationWidgets();
+
+        // 此函数仅在死亡单位 ID 列表变化时重建最多八个复活按钮。
+        void syncReviveCards();
 
         // 此函数按单位 ID 查询配置中的中文名称并保留 ID 回退。
         sf::String unitName(const std::string& unitId) const;
@@ -98,15 +108,19 @@ namespace autochess::game
         sf::Text title_;
         sf::Text hint_;
         sf::Text hud_;
-        sf::Text shopTitle_;
         sf::Text reserveTitle_;
         sf::Text message_;
         std::vector<Choice> choices_;
         std::vector<ShopCard> shopCards_;
+        std::vector<ReviveCard> reviveCards_;
         BoardTransform boardTransform_;
         std::unique_ptr<Button> routeToggleButton_;
+        std::unique_ptr<Button> shopTabButton_;
+        std::unique_ptr<Button> deathTabButton_;
         std::unique_ptr<Button> refreshButton_;
+        std::unique_ptr<Button> startButton_;
         bool showRoutes_ = false;
+        bool showDeathList_ = false;
         sf::Clock messageClock_;
         DragState drag_;
         UiAction pendingAction_;
