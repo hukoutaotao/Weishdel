@@ -48,6 +48,8 @@ add_library(
     src/core/controllers/IPlayerController.hpp
     # 将第九天策略抽象接口编译进纯 C++ 核心库。
     src/core/ai/IAiStrategy.hpp
+    src/core/ai/AiDecisionSupport.cpp
+    src/core/ai/AiDecisionSupport.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
