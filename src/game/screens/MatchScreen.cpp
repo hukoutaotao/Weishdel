@@ -107,6 +107,24 @@ namespace autochess::game
             return;
         }
 
+        // 此代码块处理最终结果页的重新选择和主菜单导航动作。
+        if (view_.phase == core::MatchPhase::MatchResult)
+        {
+            if (playAgainButton_ != nullptr
+                && playAgainButton_->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::PlayAgain;
+                return;
+            }
+            if (resultMenuButton_ != nullptr
+                && resultMenuButton_->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::BackToMenu;
+                return;
+            }
+            return;
+        }
+
         // 此代码块让准备和战斗页面的暂停按钮优先于其他操作生效。
         if (pauseButton_ != nullptr && pauseButton_->handleEvent(event))
         {
@@ -356,6 +374,19 @@ namespace autochess::game
             }
         }
 
+        // 此代码块在最终结果页绘制再来一局和返回主菜单按钮。
+        if (view_.phase == core::MatchPhase::MatchResult)
+        {
+            if (playAgainButton_ != nullptr)
+            {
+                playAgainButton_->draw(target);
+            }
+            if (resultMenuButton_ != nullptr)
+            {
+                resultMenuButton_->draw(target);
+            }
+        }
+
         // 此代码块在暂停时覆盖底层画面并绘制三个应用层操作按钮。
         if (paused_)
         {
@@ -469,6 +500,7 @@ namespace autochess::game
         resumeButton_.reset();
         restartButton_.reset();
         resultMenuButton_.reset();
+        playAgainButton_.reset();
         showDeathList_ = false;
         message_.setString(L"");
 
@@ -714,6 +746,16 @@ namespace autochess::game
                          << L"    敌方守卫：" << view_.result.guardValueB;
             hint_.setString(resultStream.str());
             hint_.setPosition(390.0F, 310.0F);
+            playAgainButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(390.0F, 470.0F, 240.0F, 58.0F),
+                L"再来一局",
+                21);
+            resultMenuButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(650.0F, 470.0F, 240.0F, 58.0F),
+                L"返回主菜单",
+                21);
         }
     }
 

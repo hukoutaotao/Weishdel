@@ -186,6 +186,11 @@ namespace autochess::game
         {
             restartCurrentGame();
         }
+        else if (action.kind == UiActionKind::PlayAgain)
+        {
+            // 此代码块让结果页的再来一局严格回到地图选择阶段。
+            startNewGame();
+        }
         else if (action.kind == UiActionKind::SubmitCommand
                  && action.command.has_value()
                  && humanController_ != nullptr)
