@@ -81,6 +81,9 @@ add_library(
     # 将第 5 天单位继承体系和技能抽象接口编译进核心静态库。
     src/core/skills/Skill.cpp
     src/core/skills/Skill.hpp
+    # 将技力恢复和确定性技能选目标规则编译进核心静态库。
+    src/core/skills/SkillSystem.cpp
+    src/core/skills/SkillSystem.hpp
     src/core/units/Unit.cpp
     src/core/units/Unit.hpp
 )

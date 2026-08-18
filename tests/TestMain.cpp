@@ -22,6 +22,7 @@
 #include "core/model/PlayerStateService.hpp"
 #include "core/model/PlayerTypes.hpp"
 #include "core/skills/Skill.hpp"
+#include "core/skills/SkillSystem.hpp"
 #include "core/units/Unit.hpp"
 
 #include <cassert>
@@ -4345,6 +4346,143 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证技力恢复限制和三种技能目标规则的确定性结果。
+    int runSkillSystemRuleTests()
+    {
+        TestRunner runner;
+
+        // 此辅助代码块用固定误差比较技力测试中的小数结果。
+        const auto manaNearlyEqual = [](const double left, const double right)
+        {
+            return std::abs(left - right) <= 1.0e-9;
+        };
+
+        // 此辅助代码块创建带有效战斗身份、位置和生命值的技能测试单位。
+        const auto makeUnit = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::MapSide side,
+            const autochess::core::BattlePosition position,
+            const double health)
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = id;
+            unit.side = side;
+            unit.position = position;
+            unit.stats.maxHealth = 100.0;
+            unit.health = health;
+            unit.maxMana = 10.0;
+            return unit;
+        };
+
+        // 此代码块验证每秒一点恢复、最大值封顶和满技力释放条件。
+        auto manaUnit = makeUnit(
+            1, autochess::core::MapSide::A, {0.0, 0.0}, 100.0);
+        manaUnit.currentMana = 8.5;
+        autochess::core::SkillSystem::regenerateMana(manaUnit, 0.5);
+        autochess::core::SkillSystem::regenerateMana(manaUnit, 5.0);
+        runner.check(
+            manaNearlyEqual(manaUnit.currentMana, 10.0)
+                && autochess::core::SkillSystem::canRelease(manaUnit),
+            "Skill mana regenerates at one per second and stops at maximum");
+
+        // 此代码块验证技能生效中和单位死亡后均不恢复技力也不能释放。
+        manaUnit.currentMana = 4.0;
+        manaUnit.activeSkill.active = true;
+        autochess::core::SkillSystem::regenerateMana(manaUnit, 2.0);
+        const bool activeBlocked = manaNearlyEqual(manaUnit.currentMana, 4.0)
+            && !autochess::core::SkillSystem::canRelease(manaUnit);
+        manaUnit.activeSkill.active = false;
+        manaUnit.state = autochess::core::BattleUnitState::Dead;
+        autochess::core::SkillSystem::regenerateMana(manaUnit, 2.0);
+        runner.check(
+            activeBlocked
+                && manaNearlyEqual(manaUnit.currentMana, 4.0)
+                && !autochess::core::SkillSystem::canRelease(manaUnit),
+            "Skill mana pauses while active and after unit death");
+
+        // 此代码块验证敌方技能按距离和编号选出范围内前两个目标。
+        const auto caster = makeUnit(
+            10, autochess::core::MapSide::A, {0.0, 0.0}, 100.0);
+        auto enemyHigherId = makeUnit(
+            3, autochess::core::MapSide::B, {1.0, 0.0}, 100.0);
+        auto enemyLowerId = enemyHigherId;
+        enemyLowerId.id = 2;
+        auto fartherEnemy = makeUnit(
+            1, autochess::core::MapSide::B, {2.0, 0.0}, 100.0);
+        auto outsideEnemy = makeUnit(
+            4, autochess::core::MapSide::B, {4.0, 0.0}, 100.0);
+        auto friendlyUnit = makeUnit(
+            5, autochess::core::MapSide::A, {0.5, 0.0}, 100.0);
+        autochess::core::SkillDefinition enemySkill;
+        enemySkill.targetRule = autochess::core::SkillTargetRule::Enemy;
+        enemySkill.targetCount = 2;
+        enemySkill.effectRange = 3.0;
+        const std::vector<autochess::core::BattleUnit> enemyUnits = {
+            outsideEnemy,
+            enemyHigherId,
+            fartherEnemy,
+            friendlyUnit,
+            enemyLowerId,
+            caster};
+        const auto enemyTargets =
+            autochess::core::SkillSystem::selectTargets(
+                caster, enemySkill, enemyUnits);
+        runner.check(
+            enemyTargets
+                == std::vector<autochess::core::BattleUnitId>{2, 3},
+            "Skill enemy targets use distance then ID with count and range");
+
+        // 此代码块验证治疗技能忽略满血和禁用的自身并按生命比例、编号选目标。
+        auto woundedLowerId = makeUnit(
+            6, autochess::core::MapSide::A, {1.0, 0.0}, 25.0);
+        auto woundedHigherId = woundedLowerId;
+        woundedHigherId.id = 7;
+        auto fullAlly = makeUnit(
+            8, autochess::core::MapSide::A, {1.0, 0.0}, 100.0);
+        auto woundedCaster = caster;
+        woundedCaster.health = 10.0;
+        autochess::core::SkillDefinition healingSkill;
+        healingSkill.targetRule =
+            autochess::core::SkillTargetRule::LowestHealthAlly;
+        healingSkill.targetCount = 1;
+        healingSkill.effectRange = 3.0;
+        healingSkill.allowSelf = false;
+        const std::vector<autochess::core::BattleUnit> healingUnits = {
+            woundedHigherId,
+            fullAlly,
+            woundedCaster,
+            woundedLowerId};
+        const auto allyTargets =
+            autochess::core::SkillSystem::selectTargets(
+                woundedCaster, healingSkill, healingUnits);
+        healingSkill.allowSelf = true;
+        const auto selfTarget =
+            autochess::core::SkillSystem::selectTargets(
+                woundedCaster, healingSkill, healingUnits);
+        runner.check(
+            allyTargets
+                    == std::vector<autochess::core::BattleUnitId>{6}
+                && selfTarget
+                    == std::vector<autochess::core::BattleUnitId>{10},
+            "Skill healing targets use health ratio, ID, and self policy");
+
+        // 此代码块验证自身目标规则只返回存活施法者自己的编号。
+        autochess::core::SkillDefinition selfSkill;
+        selfSkill.targetRule = autochess::core::SkillTargetRule::Self;
+        selfSkill.targetCount = 1;
+        selfSkill.effectRange = 0.0;
+        selfSkill.allowSelf = true;
+        const auto selfTargets =
+            autochess::core::SkillSystem::selectTargets(
+                caster, selfSkill, enemyUnits);
+        runner.check(
+            selfTargets
+                == std::vector<autochess::core::BattleUnitId>{10},
+            "Skill self target rule selects only its living caster");
+
+        return runner.failureCount();
+    }
+
     // 此函数运行第一张正式地图和全部路线非法输入测试。
     int runMapConfigLoaderTests()
     {
@@ -5786,6 +5924,16 @@ int main()
     }
 
     std::cout << "[PASS] Unit and skill interface test suite\n";
+
+    // 此代码块运行技力与技能目标规则测试并传播任一失败。
+    const int skillSystemRuleFailures = runSkillSystemRuleTests();
+    assert(skillSystemRuleFailures == 0);
+    if (skillSystemRuleFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Skill system rule test suite\n";
 
     // 此代码段运行地图加载与路线校验测试并在任一案例失败时终止程序。
     const int mapFailures = runMapConfigLoaderTests();
