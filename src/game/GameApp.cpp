@@ -2,6 +2,7 @@
 
 #include "game/screens/HelpScreen.hpp"
 #include "game/screens/MainMenuScreen.hpp"
+#include "game/screens/MatchScreen.hpp"
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -62,6 +63,7 @@ namespace autochess::game
                 accumulatorSeconds_ -= FixedStepSeconds;
             }
 
+            updateMatchScreen();
             render();
         }
 
@@ -166,7 +168,13 @@ namespace autochess::game
         }
         else if (action.kind == UiActionKind::StartGame)
         {
-            std::cout << "[UI] 开始游戏按钮已生效，选择流程将在步骤 7.4 接通\n";
+            startNewGame();
+        }
+        else if (action.kind == UiActionKind::SubmitCommand
+                 && action.command.has_value()
+                 && humanController_ != nullptr)
+        {
+            humanController_->enqueue(action.command.value());
         }
     }
 
@@ -182,6 +190,67 @@ namespace autochess::game
         screen_ = std::make_unique<HelpScreen>(font_);
     }
 
+    // 此函数重建对局及双方控制器并切换到地图选择页面。
+    void GameApp::startNewGame()
+    {
+        match_ = std::make_unique<core::Match>(config_);
+        humanController_ = std::make_unique<HumanController>(core::MapSide::A);
+        computerController_ =
+            std::make_unique<BootstrapComputerController>();
+        screen_ = std::make_unique<MatchScreen>(font_);
+        accumulatorSeconds_ = 0.0F;
+        updateMatchScreen();
+    }
+
+    // 此函数按 A 后 B 的稳定顺序提交控制器本帧产生的命令。
+    void GameApp::processControllerCommands()
+    {
+        // 此代码块在任一对局组件尚未创建时保持静默。
+        if (match_ == nullptr
+            || humanController_ == nullptr
+            || computerController_ == nullptr)
+        {
+            return;
+        }
+
+        const core::ReadOnlyGameView viewA =
+            match_->viewFor(humanController_->side());
+        // 此代码块提交真人本帧至多一条命令并把结果交给对局页面。
+        if (const std::optional<core::GameCommand> command =
+                humanController_->nextCommand(viewA))
+        {
+            const core::CommandResult result = match_->submit(command.value());
+            if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
+            {
+                matchScreen->showCommandResult(result);
+            }
+        }
+
+        const core::ReadOnlyGameView viewB =
+            match_->viewFor(computerController_->side());
+        // 此代码块提交占位电脑本帧至多一条命令并记录意外失败。
+        if (const std::optional<core::GameCommand> command =
+                computerController_->nextCommand(viewB))
+        {
+            const core::CommandResult result = match_->submit(command.value());
+            if (!result.success)
+            {
+                std::cerr << "[COMPUTER] " << result.message << '\n';
+            }
+        }
+    }
+
+    // 此函数向对局页面提供不暴露内部对象的最新 A 方快照。
+    void GameApp::updateMatchScreen()
+    {
+        // 此代码块只在当前确实为对局页面且核心存在时复制快照。
+        auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get());
+        if (match_ != nullptr && matchScreen != nullptr)
+        {
+            matchScreen->updateView(match_->viewFor(core::MapSide::A));
+        }
+    }
+
     // 此函数把固定步长只发送给准备、战斗和结算阶段的核心对局。
     void GameApp::fixedUpdate()
     {
@@ -190,6 +259,9 @@ namespace autochess::game
         {
             return;
         }
+
+        // 此代码块先执行本帧双方命令，再推进准备或战斗模拟。
+        processControllerCommands();
 
         const core::MatchPhase phase = match_->phase();
         // 此代码块排除菜单选择和最终结果阶段，避免准备倒计时提前消耗。

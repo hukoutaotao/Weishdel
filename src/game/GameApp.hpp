@@ -2,6 +2,8 @@
 
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/match/Match.hpp"
+#include "game/controllers/BootstrapComputerController.hpp"
+#include "game/controllers/HumanController.hpp"
 #include "game/screens/Screen.hpp"
 
 #include <SFML/Graphics/Font.hpp>
@@ -40,6 +42,15 @@ namespace autochess::game
         // 此函数切换到全新帮助页面。
         void showHelp();
 
+        // 此函数创建全新核心对局和双方第七天控制器。
+        void startNewGame();
+
+        // 此函数让双方控制器基于最新快照各提交至多一条命令。
+        void processControllerCommands();
+
+        // 此函数把最新 A 方只读快照交给对局页面。
+        void updateMatchScreen();
+
         // 此函数仅在核心处于可推进阶段时执行一个固定模拟帧。
         void fixedUpdate();
 
@@ -50,6 +61,8 @@ namespace autochess::game
         sf::Font font_;
         core::ConfigBundle config_;
         std::unique_ptr<core::Match> match_;
+        std::unique_ptr<HumanController> humanController_;
+        std::unique_ptr<BootstrapComputerController> computerController_;
         std::unique_ptr<Screen> screen_;
         sf::Clock frameClock_;
         float accumulatorSeconds_ = 0.0F;

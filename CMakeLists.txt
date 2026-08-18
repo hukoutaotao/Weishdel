@@ -120,12 +120,19 @@ add_executable(
     # 将第七天窗口、资源和固定步长运行骨架编译进游戏目标。
     src/game/GameApp.cpp
     src/game/GameApp.hpp
+    # 将真人命令队列和第七天占位电脑控制器编译进游戏目标。
+    src/game/controllers/HumanController.cpp
+    src/game/controllers/HumanController.hpp
+    src/game/controllers/BootstrapComputerController.cpp
+    src/game/controllers/BootstrapComputerController.hpp
     # 将抽象屏幕、主菜单、帮助页和通用按钮编译进表现层。
     src/game/screens/Screen.hpp
     src/game/screens/MainMenuScreen.cpp
     src/game/screens/MainMenuScreen.hpp
     src/game/screens/HelpScreen.cpp
     src/game/screens/HelpScreen.hpp
+    src/game/screens/MatchScreen.cpp
+    src/game/screens/MatchScreen.hpp
     src/game/ui/Button.cpp
     src/game/ui/Button.hpp
     src/game/ui/UiAction.hpp
