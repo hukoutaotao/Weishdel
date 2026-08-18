@@ -5709,6 +5709,132 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证技能释放、技力恢复和持续行为许可已接入固定步长战斗。
+    int runBattleSkillFlowTests()
+    {
+        TestRunner runner;
+
+        autochess::core::MapDefinition map;
+        map.id = "skill_flow_map";
+        map.width = 6;
+        map.height = 3;
+        map.gridRows = {
+            "######",
+            "#....#",
+            "######"};
+
+        // 此辅助代码块创建基础属性与实时属性一致的满血技能战斗单位。
+        const auto makeUnit = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::MapSide side,
+            const autochess::core::BattlePosition position)
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = id;
+            unit.ownedUnitId = id * 10;
+            unit.identity = {"skill_flow_unit", 1};
+            unit.side = side;
+            unit.position = position;
+            unit.baseStats.maxHealth = 100.0;
+            unit.baseStats.attackPower = 20.0;
+            unit.baseStats.physicalDefense = 5.0;
+            unit.baseStats.magicResistance = 20.0;
+            unit.baseStats.attackRange = 2.0;
+            unit.baseStats.moveSpeed = 60.0;
+            unit.baseStats.attackSpeed = 0.0;
+            unit.stats = unit.baseStats;
+            unit.health = unit.stats.maxHealth;
+            unit.maxMana = 10.0;
+            return unit;
+        };
+
+        // 此代码块验证固定六十帧使战斗单位准确恢复一点技力。
+        auto manaUnit = makeUnit(
+            1, autochess::core::MapSide::A, {1.5, 1.5});
+        autochess::core::BattleSimulation manaSimulation(
+            {manaUnit}, map, 3);
+        for (int frame = 0; frame < 60; ++frame)
+        {
+            manaSimulation.step();
+        }
+        runner.check(
+            nearlyEqual(manaSimulation.units()[0].currentMana, 1.0),
+            "Battle fixed steps regenerate exactly one mana per second");
+
+        // 此代码块验证战斗释放入口查找技能定义、自动选敌并应用法术伤害。
+        auto damageCaster = makeUnit(
+            2, autochess::core::MapSide::A, {1.5, 1.5});
+        damageCaster.skillId = "flow_damage";
+        damageCaster.currentMana = damageCaster.maxMana;
+        auto damageTarget = makeUnit(
+            3, autochess::core::MapSide::B, {2.5, 1.5});
+        autochess::core::SkillDefinition damageSkill;
+        damageSkill.id = "flow_damage";
+        damageSkill.effectType = autochess::core::SkillEffectType::Damage;
+        damageSkill.targetRule = autochess::core::SkillTargetRule::Enemy;
+        damageSkill.targetCount = 1;
+        damageSkill.effectRange = 2.0;
+        damageSkill.damageType = autochess::core::DamageType::Magic;
+        damageSkill.levelValues = {20.0, 30.0, 45.0};
+        autochess::core::BattleSimulation damageSimulation(
+            {damageCaster, damageTarget}, map, 3, {damageSkill});
+        const bool damageReleased = damageSimulation.releaseSkill(2);
+        runner.check(
+            damageReleased
+                && damageSimulation.units()[0].currentMana == 0.0
+                && nearlyEqual(damageSimulation.units()[1].health, 84.0)
+                && !damageSimulation.releaseSkill(2),
+            "Battle release applies configured skill and rejects empty mana");
+
+        // 此代码块验证技能生效帧禁止移动和普通行动且不恢复技力。
+        auto blockedCaster = makeUnit(
+            4, autochess::core::MapSide::A, {1.5, 1.5});
+        blockedCaster.skillId = "flow_block";
+        blockedCaster.currentMana = blockedCaster.maxMana;
+        blockedCaster.basicAction = autochess::core::BasicAction::Attack;
+        blockedCaster.basicDamageType = autochess::core::DamageType::Physical;
+        blockedCaster.routePoints = {{1, 1}, {4, 1}};
+        blockedCaster.nextRoutePointIndex = 1;
+        autochess::core::SkillDefinition blockedSkill;
+        blockedSkill.id = "flow_block";
+        blockedSkill.effectType = autochess::core::SkillEffectType::Buff;
+        blockedSkill.targetRule = autochess::core::SkillTargetRule::Self;
+        blockedSkill.targetCount = 1;
+        blockedSkill.effectRange = 0.0;
+        blockedSkill.levelValues = {0.0, 0.0, 0.0};
+        blockedSkill.durationSeconds =
+            autochess::core::BattleSimulation::FixedDeltaSeconds;
+        blockedSkill.buffStat = autochess::core::BuffStat::MoveSpeed;
+        blockedSkill.modifierMode = autochess::core::ModifierMode::Add;
+        blockedSkill.allowSelf = true;
+        blockedSkill.allowMove = false;
+        blockedSkill.allowBasicAction = false;
+        autochess::core::BattleSimulation blockedSimulation(
+            {blockedCaster}, map, 3, {blockedSkill});
+        const bool blockedReleased = blockedSimulation.releaseSkill(4);
+        blockedSimulation.step();
+        const bool blockedFrameValid = blockedReleased
+            && nearlyEqual(blockedSimulation.units()[0].position.x, 1.5)
+            && blockedSimulation.units()[0].basicActionElapsed == 0.0
+            && blockedSimulation.units()[0].currentMana == 0.0
+            && !blockedSimulation.units()[0].activeSkill.active;
+        blockedSimulation.step();
+        runner.check(
+            blockedFrameValid
+                && nearlyEqual(
+                    blockedSimulation.units()[0].position.x,
+                    2.5)
+                && nearlyEqual(
+                    blockedSimulation.units()[0].basicActionElapsed,
+                    autochess::core::BattleSimulation::FixedDeltaSeconds)
+                && nearlyEqual(
+                    blockedSimulation.units()[0].currentMana,
+                    autochess::core::BattleSimulation::FixedDeltaSeconds),
+            "Battle resumes movement, action timing, and mana next frame");
+
+        return runner.failureCount();
+    }
+
     int runBattleEndConditionTests()
     {
         TestRunner runner;
@@ -6059,6 +6185,16 @@ int main()
     }
 
     std::cout << "[PASS] Battle healing test suite\n";
+
+    // 此代码块运行固定步长技能流程测试并传播任一失败。
+    const int battleSkillFlowFailures = runBattleSkillFlowTests();
+    assert(battleSkillFlowFailures == 0);
+    if (battleSkillFlowFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Battle skill flow test suite\n";
 
     const int battleEndConditionFailures = runBattleEndConditionTests();
     assert(battleEndConditionFailures == 0);

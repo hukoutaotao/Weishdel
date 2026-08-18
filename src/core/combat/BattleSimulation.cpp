@@ -2,6 +2,7 @@
 
 #include "core/combat/CombatRules.hpp"
 #include "core/combat/TargetSelector.hpp"
+#include "core/skills/SkillSystem.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -55,9 +56,11 @@ namespace autochess::core
     BattleSimulation::BattleSimulation(
         std::vector<BattleUnit> units,
         MapDefinition map,
-        const int timeoutSeconds)
+        const int timeoutSeconds,
+        std::vector<SkillDefinition> skills)
         : units_(std::move(units)),
           map_(std::move(map)),
+          skills_(std::move(skills)),
           timeoutFrames_(timeoutSeconds <= 0
                   ? 0
                   : static_cast<std::uint64_t>(timeoutSeconds) * 60),
@@ -273,7 +276,19 @@ namespace autochess::core
     {
         for (BattleUnit& unit : units_)
         {
-            if (unit.state == BattleUnitState::Alive)
+            if (unit.state != BattleUnitState::Alive)
+            {
+                continue;
+            }
+
+            // 此代码块在技能禁止普通行动时清除目标，否则执行既有确定性索敌。
+            if (unit.activeSkill.active
+                && !unit.activeSkill.allowBasicAction)
+            {
+                unit.targetId.reset();
+                unit.firstInRangeFrame.clear();
+            }
+            else
             {
                 TargetSelector::update(unit, units_, currentFrame_);
             }
@@ -294,6 +309,8 @@ namespace autochess::core
         for (BattleUnit& actor : units_)
         {
             if (actor.state != BattleUnitState::Alive
+                || (actor.activeSkill.active
+                    && !actor.activeSkill.allowBasicAction)
                 || !actor.targetId.has_value())
             {
                 continue;
@@ -447,14 +464,27 @@ namespace autochess::core
         {
             if (unit.state == BattleUnitState::Alive)
             {
-                unit.basicActionElapsed += FixedDeltaSeconds;
-                clearInvalidTarget(unit);
+                // 此代码块先恢复本帧技力，再按技能许可累计普通行动计时。
+                SkillSystem::regenerateMana(unit, FixedDeltaSeconds);
+                if (!unit.activeSkill.active
+                    || unit.activeSkill.allowBasicAction)
+                {
+                    unit.basicActionElapsed += FixedDeltaSeconds;
+                    clearInvalidTarget(unit);
+                }
+                else
+                {
+                    unit.targetId.reset();
+                    unit.firstInRangeFrame.clear();
+                }
             }
         }
 
         for (BattleUnit& unit : units_)
         {
             if (unit.state == BattleUnitState::Alive
+                && (!unit.activeSkill.active
+                    || unit.activeSkill.allowMove)
                 && !unit.targetId.has_value())
             {
                 moveUnit(unit);
@@ -464,6 +494,12 @@ namespace autochess::core
 
         updateTargets();
         applyBasicActions();
+
+        // 此代码块在本帧行为完成后扣减持续时间，使最后一帧仍完整享受技能效果。
+        for (BattleUnit& unit : units_)
+        {
+            SkillSystem::advanceActiveSkill(unit);
+        }
 
         if (allUnitsResolved())
         {
@@ -495,5 +531,35 @@ namespace autochess::core
     const BattleSummary& BattleSimulation::summary() const noexcept
     {
         return summary_;
+    }
+
+    bool BattleSimulation::releaseSkill(const BattleUnitId casterId)
+    {
+        if (finished_)
+        {
+            return false;
+        }
+
+        // 此代码块按施法者保存的技能 ID 查找冻结定义并交给技能系统原子执行。
+        const auto casterIterator = std::find_if(
+            units_.begin(),
+            units_.end(),
+            [casterId](const BattleUnit& unit)
+            {
+                return unit.id == casterId;
+            });
+        if (casterIterator == units_.end())
+        {
+            return false;
+        }
+        const auto skillIterator = std::find_if(
+            skills_.begin(),
+            skills_.end(),
+            [&casterIterator](const SkillDefinition& skill)
+            {
+                return skill.id == casterIterator->skillId;
+            });
+        return skillIterator != skills_.end()
+            && SkillSystem::release(casterId, *skillIterator, units_);
     }
 }

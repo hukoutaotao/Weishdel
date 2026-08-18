@@ -17,7 +17,8 @@ namespace autochess::core
         BattleSimulation(
             std::vector<BattleUnit> units,
             MapDefinition map,
-            int timeoutSeconds);
+            int timeoutSeconds,
+            std::vector<SkillDefinition> skills = {});
 
         // 执行一个固定模拟帧；战斗结束后再次调用不会修改状态。
         bool step();
@@ -29,6 +30,9 @@ namespace autochess::core
         const std::vector<BattleUnit>& units() const noexcept;
 
         const BattleSummary& summary() const noexcept;
+
+        // 在战斗更新边界为指定单位释放其配置技能并返回是否成功。
+        bool releaseSkill(BattleUnitId casterId);
 
     private:
         static BattlePosition centerOf(GridPosition position) noexcept;
@@ -57,6 +61,7 @@ namespace autochess::core
 
         std::vector<BattleUnit> units_;
         MapDefinition map_;
+        std::vector<SkillDefinition> skills_;
         std::uint64_t timeoutFrames_ = 0;
         std::uint64_t currentFrame_ = 0;
         bool finished_ = false;
