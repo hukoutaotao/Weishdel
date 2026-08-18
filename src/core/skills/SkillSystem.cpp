@@ -3,7 +3,10 @@
 #include "core/combat/CombatRules.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace autochess::core
 {
@@ -22,6 +25,151 @@ namespace autochess::core
             BattleUnitId id = InvalidBattleUnitId;
             double healthRatio = 0.0;
         };
+
+        // 此函数按战斗单位编号查找可修改的临时战斗实例。
+        BattleUnit* findUnit(
+            std::vector<BattleUnit>& units,
+            const BattleUnitId id)
+        {
+            const auto iterator = std::find_if(
+                units.begin(),
+                units.end(),
+                [id](const BattleUnit& unit)
+                {
+                    return unit.id == id;
+                });
+            return iterator == units.end() ? nullptr : &*iterator;
+        }
+
+        // 此函数安全读取施法者等级对应的技能效果数值。
+        bool readSkillValue(
+            const BattleUnit& caster,
+            const SkillDefinition& skill,
+            double& value) noexcept
+        {
+            if (caster.identity.level < 1 || caster.identity.level > 3)
+            {
+                return false;
+            }
+            value = skill.levelValues[
+                static_cast<std::size_t>(caster.identity.level - 1)];
+            return std::isfinite(value) && value >= 0.0;
+        }
+
+        // 此函数把增益运算应用到分队解析后的基础属性而不累积旧技能结果。
+        bool applyModifier(
+            const double baseValue,
+            const ModifierMode mode,
+            const double modifierValue,
+            double& output) noexcept
+        {
+            if (mode == ModifierMode::Add)
+            {
+                output = baseValue + modifierValue;
+                return true;
+            }
+            if (mode == ModifierMode::Multiply)
+            {
+                output = baseValue * modifierValue;
+                return true;
+            }
+            return false;
+        }
+
+        // 此函数修改配置指定的实时属性并保留其他属性不变。
+        bool applyBuffStat(
+            BattleUnit& caster,
+            const SkillDefinition& skill,
+            const double value) noexcept
+        {
+            if (skill.buffStat == BuffStat::AttackPower)
+            {
+                return applyModifier(
+                    caster.baseStats.attackPower,
+                    skill.modifierMode,
+                    value,
+                    caster.stats.attackPower);
+            }
+            if (skill.buffStat == BuffStat::PhysicalDefense)
+            {
+                return applyModifier(
+                    caster.baseStats.physicalDefense,
+                    skill.modifierMode,
+                    value,
+                    caster.stats.physicalDefense);
+            }
+            if (skill.buffStat == BuffStat::MagicResistance)
+            {
+                return applyModifier(
+                    caster.baseStats.magicResistance,
+                    skill.modifierMode,
+                    value,
+                    caster.stats.magicResistance);
+            }
+            if (skill.buffStat == BuffStat::MoveSpeed)
+            {
+                return applyModifier(
+                    caster.baseStats.moveSpeed,
+                    skill.modifierMode,
+                    value,
+                    caster.stats.moveSpeed);
+            }
+            if (skill.buffStat == BuffStat::AttackSpeed)
+            {
+                return applyModifier(
+                    caster.baseStats.attackSpeed,
+                    skill.modifierMode,
+                    value,
+                    caster.stats.attackSpeed);
+            }
+            return false;
+        }
+
+        // 此函数把技能修改过的属性恢复为分队与等级解析后的基础值。
+        void restoreBuffStat(BattleUnit& unit) noexcept
+        {
+            if (unit.activeSkill.buffStat == BuffStat::AttackPower)
+            {
+                unit.stats.attackPower = unit.baseStats.attackPower;
+            }
+            else if (unit.activeSkill.buffStat == BuffStat::PhysicalDefense)
+            {
+                unit.stats.physicalDefense = unit.baseStats.physicalDefense;
+            }
+            else if (unit.activeSkill.buffStat == BuffStat::MagicResistance)
+            {
+                unit.stats.magicResistance = unit.baseStats.magicResistance;
+            }
+            else if (unit.activeSkill.buffStat == BuffStat::MoveSpeed)
+            {
+                unit.stats.moveSpeed = unit.baseStats.moveSpeed;
+            }
+            else if (unit.activeSkill.buffStat == BuffStat::AttackSpeed)
+            {
+                unit.stats.attackSpeed = unit.baseStats.attackSpeed;
+            }
+            unit.activeSkill = ActiveSkillState{};
+        }
+
+        // 此函数把技能持续秒数转换为至少一帧的六十帧固定步长计数。
+        bool durationFrames(
+            const double durationSeconds,
+            std::uint64_t& frames) noexcept
+        {
+            constexpr double framesPerSecond = 60.0;
+            const double rawFrames = std::ceil(
+                durationSeconds * framesPerSecond - 1.0e-9);
+            if (!std::isfinite(rawFrames)
+                || rawFrames < 1.0
+                || rawFrames
+                    > static_cast<double>(
+                        std::numeric_limits<std::uint64_t>::max()))
+            {
+                return false;
+            }
+            frames = static_cast<std::uint64_t>(rawFrames);
+            return true;
+        }
 
         // 此函数把排好序的候选编号限制到技能配置的目标数量。
         template<typename Candidate>
@@ -177,5 +325,127 @@ namespace autochess::core
             return selectLowestHealthAllies(caster, skill, units);
         }
         return {};
+    }
+
+    bool SkillSystem::release(
+        const BattleUnitId casterId,
+        const SkillDefinition& skill,
+        std::vector<BattleUnit>& units)
+    {
+        BattleUnit* caster = findUnit(units, casterId);
+        if (caster == nullptr
+            || skill.id.empty()
+            || caster->skillId != skill.id
+            || !canRelease(*caster))
+        {
+            return false;
+        }
+
+        // 此代码块在修改战斗状态前解析等级数值和全部合法目标以保证失败不消耗技力。
+        double effectValue = 0.0;
+        if (!readSkillValue(*caster, skill, effectValue))
+        {
+            return false;
+        }
+        const std::vector<BattleUnitId> targetIds = selectTargets(
+            *caster,
+            skill,
+            units);
+        if (targetIds.empty())
+        {
+            return false;
+        }
+        for (const BattleUnitId targetId : targetIds)
+        {
+            if (findUnit(units, targetId) == nullptr)
+            {
+                return false;
+            }
+        }
+
+        // 此代码块执行物理或法术技能伤害并立即标记生命归零的目标。
+        if (skill.effectType == SkillEffectType::Damage)
+        {
+            if (skill.damageType != DamageType::Physical
+                && skill.damageType != DamageType::Magic)
+            {
+                return false;
+            }
+            for (const BattleUnitId targetId : targetIds)
+            {
+                BattleUnit* target = findUnit(units, targetId);
+                const double damage = skill.damageType == DamageType::Physical
+                    ? CombatRules::physicalDamage(
+                        effectValue,
+                        target->stats.physicalDefense)
+                    : CombatRules::magicDamage(
+                        effectValue,
+                        target->stats.magicResistance);
+                target->health -= damage;
+                if (target->health <= 0.0)
+                {
+                    target->health = 0.0;
+                    target->state = BattleUnitState::Dead;
+                    target->targetId.reset();
+                    target->firstInRangeFrame.clear();
+                    restoreBuffStat(*target);
+                }
+            }
+        }
+        // 此代码块执行治疗技能并把每个目标生命值限制在最大生命值以内。
+        else if (skill.effectType == SkillEffectType::Heal)
+        {
+            for (const BattleUnitId targetId : targetIds)
+            {
+                BattleUnit* target = findUnit(units, targetId);
+                target->health = std::min(
+                    target->stats.maxHealth,
+                    target->health + effectValue);
+            }
+        }
+        // 此代码块启动自身限时增益并记录后续帧需要遵守的行为许可。
+        else if (skill.effectType == SkillEffectType::Buff)
+        {
+            std::uint64_t frames = 0;
+            if (targetIds.size() != 1
+                || targetIds.front() != caster->id
+                || !durationFrames(skill.durationSeconds, frames)
+                || !applyBuffStat(*caster, skill, effectValue))
+            {
+                return false;
+            }
+            caster->activeSkill.active = true;
+            caster->activeSkill.remainingFrames = frames;
+            caster->activeSkill.allowMove = skill.allowMove;
+            caster->activeSkill.allowBasicAction = skill.allowBasicAction;
+            caster->activeSkill.buffStat = skill.buffStat;
+            caster->activeSkill.modifierMode = skill.modifierMode;
+            caster->activeSkill.modifierValue = effectValue;
+        }
+        else
+        {
+            return false;
+        }
+
+        // 此代码块只在技能效果成功生效后一次性清空施法者技力。
+        caster->currentMana = 0.0;
+        return true;
+    }
+
+    void SkillSystem::advanceActiveSkill(BattleUnit& unit) noexcept
+    {
+        if (!unit.activeSkill.active)
+        {
+            return;
+        }
+
+        // 此代码块在死亡或最后一帧结束时恢复基础属性并清除技能状态。
+        if (unit.state != BattleUnitState::Alive
+            || unit.activeSkill.remainingFrames <= 1)
+        {
+            restoreBuffStat(unit);
+            return;
+        }
+        --unit.activeSkill.remainingFrames;
     }
 }

@@ -21,5 +21,12 @@ namespace autochess::core
             const BattleUnit& caster,
             const SkillDefinition& skill,
             const std::vector<BattleUnit>& units);
+
+        static bool release(
+            BattleUnitId casterId,
+            const SkillDefinition& skill,
+            std::vector<BattleUnit>& units);
+
+        static void advanceActiveSkill(BattleUnit& unit) noexcept;
     };
 }

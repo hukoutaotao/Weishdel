@@ -4483,6 +4483,199 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证物理、法术、治疗和限时增益技能的实际数值效果。
+    int runSkillEffectTests()
+    {
+        TestRunner runner;
+
+        // 此辅助代码块创建具有完整基础属性、实时属性和满技力的施法测试单位。
+        const auto makeUnit = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::MapSide side,
+            const autochess::core::BattlePosition position)
+        {
+            autochess::core::BattleUnit unit;
+            unit.id = id;
+            unit.identity = {"skill_unit", 1};
+            unit.side = side;
+            unit.position = position;
+            unit.baseStats.maxHealth = 100.0;
+            unit.baseStats.attackPower = 20.0;
+            unit.baseStats.physicalDefense = 7.0;
+            unit.baseStats.magicResistance = 20.0;
+            unit.baseStats.moveSpeed = 1.0;
+            unit.baseStats.attackSpeed = 100.0;
+            unit.stats = unit.baseStats;
+            unit.health = unit.stats.maxHealth;
+            unit.currentMana = 10.0;
+            unit.maxMana = 10.0;
+            return unit;
+        };
+
+        // 此代码块验证单体物理技能扣除防御、消耗全部技力并能造成死亡。
+        auto physicalCaster = makeUnit(
+            1, autochess::core::MapSide::A, {0.0, 0.0});
+        physicalCaster.skillId = "physical_skill";
+        auto physicalTarget = makeUnit(
+            2, autochess::core::MapSide::B, {1.0, 0.0});
+        physicalTarget.health = 15.0;
+        autochess::core::SkillDefinition physicalSkill;
+        physicalSkill.id = "physical_skill";
+        physicalSkill.effectType = autochess::core::SkillEffectType::Damage;
+        physicalSkill.targetRule = autochess::core::SkillTargetRule::Enemy;
+        physicalSkill.targetCount = 1;
+        physicalSkill.effectRange = 2.0;
+        physicalSkill.damageType = autochess::core::DamageType::Physical;
+        physicalSkill.levelValues = {22.0, 34.0, 51.0};
+        std::vector<autochess::core::BattleUnit> physicalUnits = {
+            physicalCaster,
+            physicalTarget};
+        const bool physicalReleased = autochess::core::SkillSystem::release(
+            1, physicalSkill, physicalUnits);
+        runner.check(
+            physicalReleased
+                && physicalUnits[0].currentMana == 0.0
+                && physicalUnits[1].health == 0.0
+                && physicalUnits[1].state
+                    == autochess::core::BattleUnitState::Dead,
+            "Physical skill uses defense, consumes mana, and marks death");
+
+        // 此代码块验证多体法术技能按各目标法抗独立计算伤害。
+        auto magicCaster = makeUnit(
+            3, autochess::core::MapSide::A, {0.0, 0.0});
+        magicCaster.skillId = "magic_skill";
+        auto magicTargetA = makeUnit(
+            4, autochess::core::MapSide::B, {1.0, 0.0});
+        auto magicTargetB = makeUnit(
+            5, autochess::core::MapSide::B, {2.0, 0.0});
+        magicTargetB.stats.magicResistance = 50.0;
+        autochess::core::SkillDefinition magicSkill;
+        magicSkill.id = "magic_skill";
+        magicSkill.effectType = autochess::core::SkillEffectType::Damage;
+        magicSkill.targetRule = autochess::core::SkillTargetRule::Enemy;
+        magicSkill.targetCount = 2;
+        magicSkill.effectRange = 3.0;
+        magicSkill.damageType = autochess::core::DamageType::Magic;
+        magicSkill.levelValues = {20.0, 30.0, 45.0};
+        std::vector<autochess::core::BattleUnit> magicUnits = {
+            magicTargetB,
+            magicCaster,
+            magicTargetA};
+        const bool magicReleased = autochess::core::SkillSystem::release(
+            3, magicSkill, magicUnits);
+        runner.check(
+            magicReleased
+                && std::abs(magicUnits[0].health - 90.0) <= 1.0e-9
+                && std::abs(magicUnits[2].health - 84.0) <= 1.0e-9,
+            "Magic skill damages multiple targets using each resistance");
+
+        // 此代码块验证单体治疗技能不会使受伤友军超过最大生命值。
+        auto healingCaster = makeUnit(
+            6, autochess::core::MapSide::A, {0.0, 0.0});
+        healingCaster.skillId = "healing_skill";
+        auto healingTarget = makeUnit(
+            7, autochess::core::MapSide::A, {1.0, 0.0});
+        healingTarget.health = 90.0;
+        autochess::core::SkillDefinition healingSkill;
+        healingSkill.id = "healing_skill";
+        healingSkill.effectType = autochess::core::SkillEffectType::Heal;
+        healingSkill.targetRule =
+            autochess::core::SkillTargetRule::LowestHealthAlly;
+        healingSkill.targetCount = 1;
+        healingSkill.effectRange = 2.0;
+        healingSkill.damageType = autochess::core::DamageType::None;
+        healingSkill.levelValues = {24.0, 36.0, 54.0};
+        healingSkill.allowSelf = true;
+        std::vector<autochess::core::BattleUnit> healingUnits = {
+            healingCaster,
+            healingTarget};
+        const bool healingReleased = autochess::core::SkillSystem::release(
+            6, healingSkill, healingUnits);
+        runner.check(
+            healingReleased
+                && healingUnits[0].currentMana == 0.0
+                && healingUnits[1].health == 100.0,
+            "Healing skill restores health without exceeding maximum");
+
+        // 此代码块验证加法防御增益持续三秒并在第一百八十帧后恢复基础值。
+        auto defenseCaster = makeUnit(
+            8, autochess::core::MapSide::A, {0.0, 0.0});
+        defenseCaster.skillId = "defense_buff";
+        autochess::core::SkillDefinition defenseBuff;
+        defenseBuff.id = "defense_buff";
+        defenseBuff.effectType = autochess::core::SkillEffectType::Buff;
+        defenseBuff.targetRule = autochess::core::SkillTargetRule::Self;
+        defenseBuff.targetCount = 1;
+        defenseBuff.effectRange = 0.0;
+        defenseBuff.levelValues = {8.0, 12.0, 16.0};
+        defenseBuff.durationSeconds = 3.0;
+        defenseBuff.buffStat = autochess::core::BuffStat::PhysicalDefense;
+        defenseBuff.modifierMode = autochess::core::ModifierMode::Add;
+        defenseBuff.allowSelf = true;
+        defenseBuff.allowMove = false;
+        defenseBuff.allowBasicAction = true;
+        std::vector<autochess::core::BattleUnit> defenseUnits = {
+            defenseCaster};
+        const bool defenseReleased = autochess::core::SkillSystem::release(
+            8, defenseBuff, defenseUnits);
+        const bool defenseStarted = defenseReleased
+            && defenseUnits[0].activeSkill.active
+            && defenseUnits[0].activeSkill.remainingFrames == 180
+            && defenseUnits[0].stats.physicalDefense == 15.0
+            && !defenseUnits[0].activeSkill.allowMove
+            && defenseUnits[0].activeSkill.allowBasicAction;
+        for (int frame = 0; frame < 179; ++frame)
+        {
+            autochess::core::SkillSystem::advanceActiveSkill(
+                defenseUnits[0]);
+        }
+        const bool defenseLastFrame = defenseUnits[0].activeSkill.active
+            && defenseUnits[0].activeSkill.remainingFrames == 1
+            && defenseUnits[0].stats.physicalDefense == 15.0;
+        autochess::core::SkillSystem::advanceActiveSkill(defenseUnits[0]);
+        runner.check(
+            defenseStarted
+                && defenseLastFrame
+                && !defenseUnits[0].activeSkill.active
+                && defenseUnits[0].stats.physicalDefense == 7.0,
+            "Additive buff lasts exact frames and restores base defense");
+
+        // 此代码块验证乘法攻击速度增益从基础值计算且不会累积旧结果。
+        auto speedCaster = makeUnit(
+            9, autochess::core::MapSide::A, {0.0, 0.0});
+        speedCaster.skillId = "speed_buff";
+        autochess::core::SkillDefinition speedBuff = defenseBuff;
+        speedBuff.id = "speed_buff";
+        speedBuff.levelValues = {1.25, 1.5, 2.0};
+        speedBuff.durationSeconds = 4.0;
+        speedBuff.buffStat = autochess::core::BuffStat::AttackSpeed;
+        speedBuff.modifierMode = autochess::core::ModifierMode::Multiply;
+        std::vector<autochess::core::BattleUnit> speedUnits = {speedCaster};
+        const bool speedReleased = autochess::core::SkillSystem::release(
+            9, speedBuff, speedUnits);
+        runner.check(
+            speedReleased
+                && speedUnits[0].activeSkill.remainingFrames == 240
+                && speedUnits[0].stats.attackSpeed == 125.0,
+            "Multiplicative buff derives attack speed from base stats");
+
+        // 此代码块验证没有合法目标时技能失败且不消耗技力或修改生命值。
+        auto failedCaster = makeUnit(
+            10, autochess::core::MapSide::A, {0.0, 0.0});
+        failedCaster.skillId = physicalSkill.id;
+        std::vector<autochess::core::BattleUnit> failedUnits = {
+            failedCaster};
+        const bool failedRelease = autochess::core::SkillSystem::release(
+            10, physicalSkill, failedUnits);
+        runner.check(
+            !failedRelease
+                && failedUnits[0].currentMana == 10.0
+                && failedUnits[0].health == 100.0,
+            "Skill release failure leaves mana and health unchanged");
+
+        return runner.failureCount();
+    }
+
     // 此函数运行第一张正式地图和全部路线非法输入测试。
     int runMapConfigLoaderTests()
     {
@@ -5934,6 +6127,16 @@ int main()
     }
 
     std::cout << "[PASS] Skill system rule test suite\n";
+
+    // 此代码块运行技能效果与持续时间测试并传播任一失败。
+    const int skillEffectFailures = runSkillEffectTests();
+    assert(skillEffectFailures == 0);
+    if (skillEffectFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Skill effect test suite\n";
 
     // 此代码段运行地图加载与路线校验测试并在任一案例失败时终止程序。
     const int mapFailures = runMapConfigLoaderTests();
