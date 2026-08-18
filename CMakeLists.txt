@@ -46,6 +46,8 @@ add_library(
     src/core/config/MapConfigLoader.hpp
     # 将真人、脚本和未来 AI 共用的控制器抽象接口加入核心目标。
     src/core/controllers/IPlayerController.hpp
+    # 将第九天策略抽象接口编译进纯 C++ 核心库。
+    src/core/ai/IAiStrategy.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
