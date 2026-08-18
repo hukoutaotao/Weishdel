@@ -185,6 +185,7 @@ namespace autochess::game
             {
                 refreshButton_->draw(target);
             }
+            drawSellZone(target);
             drawPreparationUnits(target);
         }
 
@@ -460,6 +461,12 @@ namespace autochess::game
             88.0F);
     }
 
+    // 此函数在商店下方提供不会与棋盘或备用区重叠的出售区域。
+    sf::FloatRect MatchScreen::sellZoneBounds() noexcept
+    {
+        return sf::FloatRect(880.0F, 500.0F, 368.0F, 58.0F);
+    }
+
     // 此函数先检测备用槽，再检测己方部署格中的活动单位。
     core::OwnedUnitId MatchScreen::hitTestOwnedUnit(
         const sf::Vector2f pixel) const noexcept
@@ -498,10 +505,34 @@ namespace autochess::game
         const core::OwnedUnitId unitId = drag_.unitId;
         drag_ = DragState{};
 
-        // 此代码块优先把棋盘内释放转换为部署命令并让核心验证格子是否合法。
+        // 此代码块让出售区优先于其他投放区域生成出售命令。
+        if (sellZoneBounds().contains(pixel))
+        {
+            pendingAction_.kind = UiActionKind::SubmitCommand;
+            pendingAction_.command = core::GameCommand{
+                core::MapSide::A,
+                core::SellUnitCommand{unitId}};
+            return;
+        }
+
+        // 此代码块把棋盘内占用格转换为合成，其余格转换为部署命令。
         if (const std::optional<core::GridPosition> grid =
                 boardTransform_.pixelToGrid(pixel))
         {
+            // 此代码块在己方部署映射中查找目标格已存在的合成对象。
+            if (view_.self.has_value())
+            {
+                const auto iterator = view_.self->deployments.find(grid.value());
+                if (iterator != view_.self->deployments.end()
+                    && iterator->second != unitId)
+                {
+                    pendingAction_.kind = UiActionKind::SubmitCommand;
+                    pendingAction_.command = core::GameCommand{
+                        core::MapSide::A,
+                        core::MergeUnitsCommand{unitId, iterator->second}};
+                    return;
+                }
+            }
             pendingAction_.kind = UiActionKind::SubmitCommand;
             pendingAction_.command = core::GameCommand{
                 core::MapSide::A,
@@ -509,7 +540,7 @@ namespace autochess::game
             return;
         }
 
-        // 此代码块把备用区内释放转换为指定槽位的返回命令。
+        // 此代码块把占用备用槽转换为合成，把空槽转换为返回命令。
         if (view_.self.has_value())
         {
             for (std::size_t slot = 0;
@@ -518,6 +549,16 @@ namespace autochess::game
             {
                 if (reserveSlotBounds(slot).contains(pixel))
                 {
+                    const std::optional<core::OwnedUnitId>& target =
+                        view_.self->reserveSlots[slot];
+                    if (target.has_value() && target.value() != unitId)
+                    {
+                        pendingAction_.kind = UiActionKind::SubmitCommand;
+                        pendingAction_.command = core::GameCommand{
+                            core::MapSide::A,
+                            core::MergeUnitsCommand{unitId, target.value()}};
+                        return;
+                    }
                     pendingAction_.kind = UiActionKind::SubmitCommand;
                     pendingAction_.command = core::GameCommand{
                         core::MapSide::A,
@@ -527,7 +568,7 @@ namespace autochess::game
             }
         }
 
-        showLocalMessage(L"请拖到地图部署格或备用槽", false);
+        showLocalMessage(L"请拖到部署格、备用槽或出售区", false);
     }
 
     // 此函数线性查找最多八个己方活动单位并返回稳定快照地址。
@@ -645,6 +686,33 @@ namespace autochess::game
                     180);
             }
         }
+    }
+
+    // 此函数绘制醒目的出售区域并提示拖入后会立即出售。
+    void MatchScreen::drawSellZone(sf::RenderTarget& target) const
+    {
+        const sf::FloatRect bounds = sellZoneBounds();
+        sf::RectangleShape zone(sf::Vector2f(bounds.width, bounds.height));
+        zone.setPosition(bounds.left, bounds.top);
+        zone.setFillColor(
+            drag_.active
+                ? sf::Color(115, 45, 50)
+                : sf::Color(75, 42, 48));
+        zone.setOutlineThickness(2.0F);
+        zone.setOutlineColor(sf::Color(210, 85, 90));
+        target.draw(zone);
+
+        // 此代码块把出售提示精确居中到投放区域。
+        sf::Text label(L"出售区（拖入出售）", font_, 20);
+        label.setFillColor(sf::Color(250, 210, 210));
+        const sf::FloatRect textBounds = label.getLocalBounds();
+        label.setOrigin(
+            textBounds.left + textBounds.width / 2.0F,
+            textBounds.top + textBounds.height / 2.0F);
+        label.setPosition(
+            bounds.left + bounds.width / 2.0F,
+            bounds.top + bounds.height / 2.0F);
+        target.draw(label);
     }
 
     // 此函数显示界面层成功或失败消息并重置三秒计时。

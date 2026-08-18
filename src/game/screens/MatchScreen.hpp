@@ -69,6 +69,9 @@ namespace autochess::game
         // 此函数返回指定备用槽的固定像素矩形。
         static sf::FloatRect reserveSlotBounds(std::size_t slot) noexcept;
 
+        // 此函数返回接收活动单位出售拖拽的固定像素矩形。
+        static sf::FloatRect sellZoneBounds() noexcept;
+
         // 此函数在鼠标按下位置查找己方可拖拽活动单位。
         core::OwnedUnitId hitTestOwnedUnit(sf::Vector2f pixel) const noexcept;
 
@@ -81,6 +84,9 @@ namespace autochess::game
 
         // 此函数绘制备用槽、己方/敌方部署单位和拖拽跟随标记。
         void drawPreparationUnits(sf::RenderTarget& target) const;
+
+        // 此函数绘制带明确红色边框和标题的出售投放区。
+        void drawSellZone(sf::RenderTarget& target) const;
 
         // 此函数显示不经过核心的界面层拖拽提示。
         void showLocalMessage(const sf::String& text, bool success);
