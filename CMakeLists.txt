@@ -78,6 +78,9 @@ add_library(
     src/core/match/GameCommand.hpp
     src/core/match/MatchTypes.cpp
     src/core/match/MatchTypes.hpp
+    # 将回合收入、败者补助和商店重建事务编译进核心库。
+    src/core/match/RoundController.cpp
+    src/core/match/RoundController.hpp
     src/core/model/Definitions.hpp
     src/core/model/PlayerStateService.cpp
     src/core/model/PlayerStateService.hpp

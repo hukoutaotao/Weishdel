@@ -20,6 +20,7 @@
 #include "core/map/MapTypes.hpp"
 #include "core/match/GameCommand.hpp"
 #include "core/match/MatchTypes.hpp"
+#include "core/match/RoundController.hpp"
 #include "core/model/Definitions.hpp"
 #include "core/model/PlayerStateService.hpp"
 #include "core/model/PlayerTypes.hpp"
@@ -302,6 +303,139 @@ namespace
             && ownedUnitListsAreEqual(left.deadUnits, right.deadUnits)
             && left.reserveSlots == right.reserveSlots
             && left.deployments == right.deployments;
+    }
+
+    // 此函数验证每次进入准备阶段都会原子地发放收入并重建商店。
+    int runRoundPreparationTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(loaded, "Round preparation loads formal configuration");
+        // 此分支在正式配置无法加载时停止依赖该配置的后续断言。
+        if (!loaded)
+        {
+            return runner.failureCount();
+        }
+
+        const autochess::core::FactionDefinition* factionA = nullptr;
+        const autochess::core::FactionDefinition* factionB = nullptr;
+        // 此循环定位测试双方使用的正式分队定义。
+        for (const autochess::core::FactionDefinition& faction
+             : bundle.factions)
+        {
+            // 此分支记录 A 方使用的坚壁分队。
+            if (faction.id == "training_team")
+            {
+                factionA = &faction;
+            }
+            // 此分支记录 B 方使用的突击分队。
+            else if (faction.id == "assault_team")
+            {
+                factionB = &faction;
+            }
+        }
+
+        runner.check(
+            factionA != nullptr && factionB != nullptr,
+            "Round preparation finds both formal factions");
+        // 此分支在任一测试分队缺失时停止后续状态构造。
+        if (factionA == nullptr || factionB == nullptr)
+        {
+            return runner.failureCount();
+        }
+
+        auto playerA = autochess::core::PlayerStateService::createInitial(
+            autochess::core::MapSide::A,
+            bundle.gameConfig,
+            *factionA);
+        auto playerB = autochess::core::PlayerStateService::createInitial(
+            autochess::core::MapSide::B,
+            bundle.gameConfig,
+            *factionB);
+        autochess::core::ShopState shopA;
+        autochess::core::ShopState shopB;
+        std::mt19937 randomEngine(bundle.gameConfig.randomSeed);
+
+        const auto firstRound =
+            autochess::core::RoundController::beginPreparation(
+                playerA,
+                playerB,
+                shopA,
+                shopB,
+                bundle.gameConfig,
+                bundle.units,
+                bundle.factions,
+                bundle.factionModifiers,
+                autochess::core::MapSide::Unknown,
+                randomEngine);
+        runner.check(
+            firstRound.success
+                && playerA.gold == 15
+                && playerB.gold == 15
+                && shopA.offers.size() == 6
+                && shopB.offers.size() == 6,
+            "Round preparation grants first-round income and six offers");
+
+        const auto firstShopA = shopA;
+        const auto firstShopB = shopB;
+        const auto secondRound =
+            autochess::core::RoundController::beginPreparation(
+                playerA,
+                playerB,
+                shopA,
+                shopB,
+                bundle.gameConfig,
+                bundle.units,
+                bundle.factions,
+                bundle.factionModifiers,
+                autochess::core::MapSide::A,
+                randomEngine);
+        runner.check(
+            secondRound.success
+                && playerA.gold == 22
+                && playerB.gold == 20,
+            "Round preparation grants loser bonus only to side A");
+        runner.check(
+            !shopsAreEqual(firstShopA, shopA)
+                || !shopsAreEqual(firstShopB, shopB),
+            "Round preparation replaces previous shop offers");
+
+        const auto playerABeforeFailure = playerA;
+        const auto playerBBeforeFailure = playerB;
+        const auto shopABeforeFailure = shopA;
+        const auto shopBBeforeFailure = shopB;
+        const auto randomBeforeFailure = randomEngine;
+        auto invalidConfig = bundle.gameConfig;
+        invalidConfig.roundIncome = -1;
+        const auto invalidResult =
+            autochess::core::RoundController::beginPreparation(
+                playerA,
+                playerB,
+                shopA,
+                shopB,
+                invalidConfig,
+                bundle.units,
+                bundle.factions,
+                bundle.factionModifiers,
+                autochess::core::MapSide::Unknown,
+                randomEngine);
+        runner.check(
+            !invalidResult.success
+                && invalidResult.errorCode
+                    == autochess::core::CommandErrorCode::InvalidConfiguration
+                && playersAreEqual(playerA, playerABeforeFailure)
+                && playersAreEqual(playerB, playerBBeforeFailure)
+                && shopsAreEqual(shopA, shopABeforeFailure)
+                && shopsAreEqual(shopB, shopBBeforeFailure)
+                && randomEngine == randomBeforeFailure,
+            "Round preparation rejects invalid income atomically");
+
+        return runner.failureCount();
     }
 
     int runPriceRulesTests()
@@ -6335,6 +6469,16 @@ int main()
     }
 
     std::cout << "[PASS] Match data types smoke test\n";
+
+    const int roundPreparationFailures = runRoundPreparationTests();
+    assert(roundPreparationFailures == 0);
+    // 此分支把准备阶段初始化测试失败转换为非零退出码。
+    if (roundPreparationFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Round preparation test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);
