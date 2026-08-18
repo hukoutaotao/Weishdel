@@ -201,6 +201,9 @@ add_custom_command(
 add_executable(
     AutoChessTests
     tests/TestMain.cpp
+    # 将第九天 AI 控制器与三种策略差异测试编译进测试目标。
+    tests/AiTests.cpp
+    tests/AiTests.hpp
     # 将第六天经济、胜负和非法命令验收矩阵编译进测试目标。
     tests/MatchAcceptanceTests.cpp
     tests/MatchAcceptanceTests.hpp

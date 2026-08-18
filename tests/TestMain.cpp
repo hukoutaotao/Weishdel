@@ -30,6 +30,7 @@
 #include "core/units/Unit.hpp"
 #include "MatchScriptedTests.hpp"
 #include "MatchAcceptanceTests.hpp"
+#include "AiTests.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -7220,6 +7221,16 @@ int main()
     }
 
     std::cout << "[PASS] Scripted match test suite\n";
+
+    // 此代码块运行第九天 AI 控制器与三种策略单元测试并传播失败。
+    const int aiStrategyFailures = runAiStrategyTests();
+    assert(aiStrategyFailures == 0);
+    if (aiStrategyFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] AI strategy test suite\n";
 
     const int matchAcceptanceFailures = runMatchAcceptanceTests();
     assert(matchAcceptanceFailures == 0);
