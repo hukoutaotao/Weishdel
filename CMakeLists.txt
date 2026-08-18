@@ -52,6 +52,8 @@ add_library(
     src/core/ai/AiDecisionSupport.hpp
     src/core/ai/OffensiveStrategy.cpp
     src/core/ai/OffensiveStrategy.hpp
+    src/core/ai/DefensiveStrategy.cpp
+    src/core/ai/DefensiveStrategy.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
