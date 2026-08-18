@@ -3,7 +3,11 @@
 #include "game/rendering/MapRenderer.hpp"
 #include "game/rendering/UnitRenderer.hpp"
 
+#include <SFML/Graphics/VertexArray.hpp>
+
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <sstream>
 #include <utility>
 
@@ -55,6 +59,16 @@ namespace autochess::game
         hud_.setFillColor(sf::Color(225, 228, 238));
         hud_.setPosition(180.0F, 24.0F);
 
+        combatHud_.setFont(font_);
+        combatHud_.setCharacterSize(20);
+        combatHud_.setFillColor(sf::Color(225, 228, 238));
+        combatHud_.setPosition(880.0F, 88.0F);
+
+        selectedHud_.setFont(font_);
+        selectedHud_.setCharacterSize(18);
+        selectedHud_.setFillColor(sf::Color(205, 215, 235));
+        selectedHud_.setPosition(880.0F, 190.0F);
+
         reserveTitle_.setFont(font_);
         reserveTitle_.setString(L"备用区");
         reserveTitle_.setCharacterSize(18);
@@ -69,6 +83,30 @@ namespace autochess::game
     // 此函数把一次选择按钮点击转换为待提交核心命令。
     void MatchScreen::handleEvent(const sf::Event& event)
     {
+        // 此代码块优先处理战斗选中和技能按钮，统一转换为核心命令。
+        if (view_.phase == core::MatchPhase::Combat)
+        {
+            if (skillButton_ != nullptr
+                && skillButton_->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::SubmitCommand;
+                pendingAction_.command = core::GameCommand{
+                    core::MapSide::A,
+                    core::ReleaseSkillCommand{selectedBattleUnitId_}};
+                return;
+            }
+            if (event.type == sf::Event::MouseButtonPressed
+                && event.mouseButton.button == sf::Mouse::Left)
+            {
+                const sf::Vector2f pixel(
+                    static_cast<float>(event.mouseButton.x),
+                    static_cast<float>(event.mouseButton.y));
+                selectedBattleUnitId_ = hitTestBattleUnit(pixel);
+                refreshCombatWidgets();
+                return;
+            }
+        }
+
         // 此代码块在准备阶段优先处理单位拖拽的按下、移动和释放。
         if (view_.phase == core::MatchPhase::Preparation)
         {
@@ -260,6 +298,22 @@ namespace autochess::game
             drawPreparationUnits(target);
         }
 
+        // 此代码块在战斗及结算阶段叠加连续单位和战斗状态面板。
+        if (view_.phase == core::MatchPhase::Combat
+            || view_.phase == core::MatchPhase::RoundSettlement)
+        {
+            drawCombatUnits(target);
+        }
+        if (view_.phase == core::MatchPhase::Combat)
+        {
+            target.draw(combatHud_);
+            target.draw(selectedHud_);
+            if (skillButton_ != nullptr)
+            {
+                skillButton_->draw(target);
+            }
+        }
+
         target.draw(title_);
         target.draw(hint_);
         // 此代码块按配置顺序绘制当前阶段可用的全部按钮。
@@ -299,6 +353,12 @@ namespace autochess::game
                 view_.selectedMap->height);
         }
         refreshPreparationWidgets();
+        // 此代码块清理跨阶段失效的单位选择并同步战斗控件。
+        if (view_.phase != core::MatchPhase::Combat)
+        {
+            selectedBattleUnitId_ = core::InvalidBattleUnitId;
+        }
+        refreshCombatWidgets();
         // 此代码块避免同一阶段每个渲染帧重复分配按钮。
         if (builtPhase_ != view_.phase)
         {
@@ -335,6 +395,7 @@ namespace autochess::game
         deathTabButton_.reset();
         refreshButton_.reset();
         startButton_.reset();
+        skillButton_.reset();
         showDeathList_ = false;
         message_.setString(L"");
 
@@ -474,10 +535,16 @@ namespace autochess::game
         else if (view_.phase == core::MatchPhase::Combat)
         {
             title_.setString(L"战斗进行中");
-            hint_.setString(L"第 8 天接入完整战斗界面");
-            title_.setPosition(910.0F, 220.0F);
-            hint_.setPosition(890.0F, 290.0F);
+            hint_.setString(L"选择己方单位查看战斗状态");
+            title_.setPosition(20.0F, 18.0F);
+            hint_.setPosition(220.0F, 28.0F);
             message_.setPosition(890.0F, 650.0F);
+            skillButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(880.0F, 500.0F, 368.0F, 52.0F),
+                L"技能未就绪",
+                21);
+            refreshCombatWidgets();
         }
         else if (view_.phase == core::MatchPhase::RoundSettlement)
         {
@@ -817,6 +884,191 @@ namespace autochess::game
             }
         }
         return nullptr;
+    }
+
+    // 此函数根据当前快照同步战斗 HUD、选中信息和技能按钮状态。
+    void MatchScreen::refreshCombatWidgets()
+    {
+        if (view_.phase != core::MatchPhase::Combat)
+        {
+            combatHud_.setString(L"");
+            selectedHud_.setString(L"");
+            if (skillButton_ != nullptr)
+            {
+                skillButton_->setEnabled(false);
+            }
+            return;
+        }
+
+        const int opponentGuard = view_.opponent.available
+            ? view_.opponent.guardValue
+            : 0;
+        const std::uint64_t secondsRemaining =
+            (view_.combatFramesRemaining + 59U) / 60U;
+        std::wostringstream hudStream;
+        hudStream << L"第 " << view_.currentRound << L" / "
+                  << view_.maxRounds << L" 回合\n我方守卫 "
+                  << (view_.self.has_value() ? view_.self->guardValue : 0)
+                  << L"    敌方守卫 " << opponentGuard
+                  << L"\n战斗剩余 " << secondsRemaining << L" 秒";
+        combatHud_.setString(hudStream.str());
+
+        const core::BattleUnit* selected = nullptr;
+        for (const core::BattleUnit& unit : view_.battleUnits)
+        {
+            if (unit.id == selectedBattleUnitId_)
+            {
+                selected = &unit;
+                break;
+            }
+        }
+
+        bool skillReady = false;
+        if (selected != nullptr
+            && selected->side == core::MapSide::A
+            && selected->state == core::BattleUnitState::Alive)
+        {
+            std::wostringstream selectedStream;
+            selectedStream << unitName(selected->identity.unitId).toWideString()
+                           << L"  Lv." << selected->identity.level
+                           << L"\n生命 " << static_cast<int>(selected->health)
+                           << L" / " << static_cast<int>(selected->stats.maxHealth)
+                           << L"\n技力 " << static_cast<int>(selected->currentMana)
+                           << L" / " << static_cast<int>(selected->maxMana);
+            if (selected->targetId.has_value())
+            {
+                const auto target = std::find_if(
+                    view_.battleUnits.begin(),
+                    view_.battleUnits.end(),
+                    [targetId = selected->targetId.value()](
+                        const core::BattleUnit& unit) {
+                        return unit.id == targetId;
+                    });
+                selectedStream << L"\n目标："
+                               << (target == view_.battleUnits.end()
+                                       ? sf::String(L"无").toWideString()
+                                       : unitName(target->identity.unitId)
+                                             .toWideString());
+            }
+            else
+            {
+                selectedStream << L"\n目标：无";
+            }
+            selectedHud_.setString(selectedStream.str());
+            skillReady = selected->maxMana > 0.0
+                && selected->currentMana >= selected->maxMana
+                && !selected->activeSkill.active;
+        }
+        else
+        {
+            selectedHud_.setString(L"未选择己方单位");
+        }
+
+        if (skillButton_ != nullptr)
+        {
+            skillButton_->setLabel(
+                skillReady ? L"释放技能" : L"技能未就绪");
+            skillButton_->setEnabled(skillReady && !paused_);
+        }
+    }
+
+    // 此函数绘制目标连线和所有仍在战场上的实时单位。
+    void MatchScreen::drawCombatUnits(sf::RenderTarget& target) const
+    {
+        if (!boardTransform_.valid())
+        {
+            return;
+        }
+
+        const float tileSize =
+            boardTransform_.cellBounds({0, 0}).width;
+        const float radius = std::clamp(tileSize * 0.28F, 10.0F, 18.0F);
+
+        // 此代码块先绘制当前目标连线，确保连线位于单位标记下方。
+        for (const core::BattleUnit& unit : view_.battleUnits)
+        {
+            if (unit.state != core::BattleUnitState::Alive
+                || !unit.targetId.has_value())
+            {
+                continue;
+            }
+            const auto targetUnit = std::find_if(
+                view_.battleUnits.begin(),
+                view_.battleUnits.end(),
+                [targetId = unit.targetId.value()](
+                    const core::BattleUnit& candidate) {
+                    return candidate.id == targetId
+                        && candidate.state == core::BattleUnitState::Alive;
+                });
+            if (targetUnit == view_.battleUnits.end())
+            {
+                continue;
+            }
+            sf::VertexArray line(sf::Lines, 2);
+            line[0].position =
+                boardTransform_.battlePositionToPixel(unit.position);
+            line[1].position =
+                boardTransform_.battlePositionToPixel(targetUnit->position);
+            line[0].color = sf::Color(235, 235, 220, 155);
+            line[1].color = sf::Color(235, 235, 220, 155);
+            target.draw(line);
+        }
+
+        // 此代码块按快照顺序绘制单位圆形、等级和两条状态条。
+        for (const core::BattleUnit& unit : view_.battleUnits)
+        {
+            if (unit.state != core::BattleUnitState::Alive)
+            {
+                continue;
+            }
+            UnitRenderer::drawBattle(
+                target,
+                font_,
+                unit,
+                boardTransform_.battlePositionToPixel(unit.position),
+                radius,
+                unit.id == selectedBattleUnitId_);
+        }
+    }
+
+    // 此函数按绘制半径命中离鼠标最近的己方存活战斗单位。
+    core::BattleUnitId MatchScreen::hitTestBattleUnit(
+        const sf::Vector2f pixel) const noexcept
+    {
+        if (!boardTransform_.valid())
+        {
+            return core::InvalidBattleUnitId;
+        }
+
+        const float tileSize =
+            boardTransform_.cellBounds({0, 0}).width;
+        const float radius = std::clamp(tileSize * 0.28F, 10.0F, 18.0F);
+        const float hitRadius = radius + 4.0F;
+        const float hitRadiusSquared = hitRadius * hitRadius;
+        core::BattleUnitId bestId = core::InvalidBattleUnitId;
+        float bestDistanceSquared = std::numeric_limits<float>::max();
+        for (const core::BattleUnit& unit : view_.battleUnits)
+        {
+            if (unit.side != core::MapSide::A
+                || unit.state != core::BattleUnitState::Alive)
+            {
+                continue;
+            }
+            const sf::Vector2f center =
+                boardTransform_.battlePositionToPixel(unit.position);
+            const float dx = pixel.x - center.x;
+            const float dy = pixel.y - center.y;
+            const float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared <= hitRadiusSquared
+                && (distanceSquared < bestDistanceSquared
+                    || (distanceSquared == bestDistanceSquared
+                        && unit.id < bestId)))
+            {
+                bestId = unit.id;
+                bestDistanceSquared = distanceSquared;
+            }
+        }
+        return bestId;
     }
 
     // 此函数绘制备用槽、双方部署单位以及当前拖拽跟随标记。

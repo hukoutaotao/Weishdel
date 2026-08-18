@@ -1,7 +1,11 @@
 #include "game/rendering/UnitRenderer.hpp"
 
+#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/Text.hpp>
+
+#include <algorithm>
+#include <cmath>
 
 namespace autochess::game
 {
@@ -68,5 +72,81 @@ namespace autochess::game
             bounds.left + bounds.width / 2.0F,
             bounds.top + bounds.height / 2.0F);
         target.draw(text);
+    }
+
+    // 此函数将战斗实时属性压缩到固定尺寸的圆形和状态条中。
+    void UnitRenderer::drawBattle(
+        sf::RenderTarget& target,
+        const sf::Font& font,
+        const core::BattleUnit& unit,
+        const sf::Vector2f center,
+        const float radius,
+        const bool selected)
+    {
+        const float safeRadius = std::max(8.0F, radius);
+        sf::CircleShape body(safeRadius);
+        body.setOrigin(safeRadius, safeRadius);
+        body.setPosition(center);
+        body.setFillColor(unitColor(unit.identity.unitId, 255));
+        body.setOutlineThickness(selected ? 4.0F : 2.0F);
+        body.setOutlineColor(
+            selected
+                ? sf::Color(255, 225, 105)
+                : (unit.side == core::MapSide::A
+                       ? sf::Color(95, 185, 255)
+                       : sf::Color(255, 115, 115)));
+        target.draw(body);
+
+        // 此代码块在单位圆心绘制短等级标记，避免地图上出现长文本。
+        sf::Text levelText(
+            sf::String(std::to_wstring(unit.identity.level)), font, 14);
+        levelText.setFillColor(sf::Color(250, 250, 250));
+        const sf::FloatRect levelBounds = levelText.getLocalBounds();
+        levelText.setOrigin(
+            levelBounds.left + levelBounds.width / 2.0F,
+            levelBounds.top + levelBounds.height / 2.0F);
+        levelText.setPosition(center);
+        target.draw(levelText);
+
+        // 此代码块绘制固定宽度的生命条和技力条并限制比例范围。
+        const float barWidth = std::max(24.0F, safeRadius * 2.4F);
+        const float barHeight = 4.0F;
+        const auto ratio = [](const double current, const double maximum) {
+            if (maximum <= 0.0)
+            {
+                return 0.0F;
+            }
+            return std::clamp(
+                static_cast<float>(current / maximum), 0.0F, 1.0F);
+        };
+        const float healthRatio = ratio(unit.health, unit.stats.maxHealth);
+        const float manaRatio = ratio(unit.currentMana, unit.maxMana);
+        const sf::Vector2f barOrigin(
+            center.x - barWidth / 2.0F,
+            center.y - safeRadius - 9.0F);
+
+        sf::RectangleShape healthBack(
+            sf::Vector2f(barWidth, barHeight));
+        healthBack.setPosition(barOrigin);
+        healthBack.setFillColor(sf::Color(45, 45, 50));
+        target.draw(healthBack);
+        sf::RectangleShape healthFill(
+            sf::Vector2f(barWidth * healthRatio, barHeight));
+        healthFill.setPosition(barOrigin);
+        healthFill.setFillColor(sf::Color(90, 220, 120));
+        target.draw(healthFill);
+
+        const sf::Vector2f manaOrigin(
+            center.x - barWidth / 2.0F,
+            center.y + safeRadius + 5.0F);
+        sf::RectangleShape manaBack(sf::Vector2f(barWidth, barHeight));
+        manaBack.setPosition(manaOrigin);
+        manaBack.setFillColor(sf::Color(45, 45, 50));
+        target.draw(manaBack);
+        sf::RectangleShape manaFill(
+            sf::Vector2f(barWidth * manaRatio, barHeight));
+        manaFill.setPosition(manaOrigin);
+        manaFill.setFillColor(sf::Color(95, 175, 255));
+        target.draw(manaFill);
     }
 }

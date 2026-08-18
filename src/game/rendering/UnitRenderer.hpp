@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/combat/BattleTypes.hpp"
 #include "core/map/MapTypes.hpp"
 #include "core/model/PlayerTypes.hpp"
 
@@ -22,5 +23,14 @@ namespace autochess::game
             core::MapSide side,
             const sf::FloatRect& bounds,
             sf::Uint8 alpha = 255);
+
+        // 此函数用圆形标记、等级和两条状态条绘制战斗单位。
+        static void drawBattle(
+            sf::RenderTarget& target,
+            const sf::Font& font,
+            const core::BattleUnit& unit,
+            sf::Vector2f center,
+            float radius,
+            bool selected);
     };
 }

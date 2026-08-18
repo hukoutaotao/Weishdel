@@ -98,6 +98,15 @@ namespace autochess::game
         // 此函数绘制备用槽、己方/敌方部署单位和拖拽跟随标记。
         void drawPreparationUnits(sf::RenderTarget& target) const;
 
+        // 此函数绘制当前战斗单位、目标连线和实时状态条。
+        void drawCombatUnits(sf::RenderTarget& target) const;
+
+        // 此函数根据战斗快照同步 HUD、选中单位和技能按钮状态。
+        void refreshCombatWidgets();
+
+        // 此函数在连续战斗坐标上命中离鼠标最近的己方单位。
+        core::BattleUnitId hitTestBattleUnit(sf::Vector2f pixel) const noexcept;
+
         // 此函数绘制带明确红色边框和标题的出售投放区。
         void drawSellZone(sf::RenderTarget& target) const;
 
@@ -134,5 +143,9 @@ namespace autochess::game
         std::unique_ptr<Button> restartButton_;
         std::unique_ptr<Button> playAgainButton_;
         std::unique_ptr<Button> resultMenuButton_;
+        std::unique_ptr<Button> skillButton_;
+        sf::Text combatHud_;
+        sf::Text selectedHud_;
+        core::BattleUnitId selectedBattleUnitId_ = core::InvalidBattleUnitId;
     };
 }
