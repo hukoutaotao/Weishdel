@@ -197,7 +197,7 @@ namespace autochess::game
         humanController_ = std::make_unique<HumanController>(core::MapSide::A);
         computerController_ =
             std::make_unique<BootstrapComputerController>();
-        screen_ = std::make_unique<MatchScreen>(font_);
+        screen_ = std::make_unique<MatchScreen>(font_, config_);
         accumulatorSeconds_ = 0.0F;
         updateMatchScreen();
     }

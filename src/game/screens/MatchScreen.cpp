@@ -2,6 +2,8 @@
 
 #include "game/rendering/MapRenderer.hpp"
 
+#include <sstream>
+
 namespace autochess::game
 {
     namespace
@@ -29,8 +31,11 @@ namespace autochess::game
     }
 
     // 此构造函数建立选择流程共用的标题、提示和消息文本。
-    MatchScreen::MatchScreen(const sf::Font& font)
-        : font_(font)
+    MatchScreen::MatchScreen(
+        const sf::Font& font,
+        const core::ConfigBundle& config)
+        : font_(font),
+          config_(config)
     {
         title_.setFont(font_);
         title_.setCharacterSize(42);
@@ -41,6 +46,16 @@ namespace autochess::game
         hint_.setCharacterSize(22);
         hint_.setFillColor(sf::Color(160, 180, 215));
         hint_.setPosition(425.0F, 150.0F);
+
+        hud_.setFont(font_);
+        hud_.setCharacterSize(19);
+        hud_.setFillColor(sf::Color(225, 228, 238));
+        hud_.setPosition(180.0F, 24.0F);
+
+        shopTitle_.setFont(font_);
+        shopTitle_.setCharacterSize(26);
+        shopTitle_.setFillColor(sf::Color(235, 238, 248));
+        shopTitle_.setPosition(880.0F, 72.0F);
 
         message_.setFont(font_);
         message_.setCharacterSize(22);
@@ -57,6 +72,29 @@ namespace autochess::game
             showRoutes_ = !showRoutes_;
             routeToggleButton_->setLabel(
                 showRoutes_ ? L"隐藏路线" : L"显示路线");
+        }
+
+        // 此代码块把准备阶段商店卡片点击转换为对应槽位购买命令。
+        for (const ShopCard& card : shopCards_)
+        {
+            if (card.button != nullptr && card.button->handleEvent(event))
+            {
+                pendingAction_.kind = UiActionKind::SubmitCommand;
+                pendingAction_.command = core::GameCommand{
+                    core::MapSide::A,
+                    core::PurchaseUnitCommand{card.slot}};
+                return;
+            }
+        }
+
+        // 此代码块把刷新按钮点击转换为无参数刷新命令。
+        if (refreshButton_ != nullptr && refreshButton_->handleEvent(event))
+        {
+            pendingAction_.kind = UiActionKind::SubmitCommand;
+            pendingAction_.command = core::GameCommand{
+                core::MapSide::A,
+                core::RefreshShopCommand{}};
+            return;
         }
 
         // 此代码块按配置顺序检测全部当前阶段选择按钮。
@@ -87,6 +125,24 @@ namespace autochess::game
             }
         }
 
+        // 此代码块在准备阶段绘制经济 HUD、商店标题、六槽和刷新按钮。
+        if (view_.phase == core::MatchPhase::Preparation)
+        {
+            target.draw(hud_);
+            target.draw(shopTitle_);
+            for (const ShopCard& card : shopCards_)
+            {
+                if (card.button != nullptr)
+                {
+                    card.button->draw(target);
+                }
+            }
+            if (refreshButton_ != nullptr)
+            {
+                refreshButton_->draw(target);
+            }
+        }
+
         target.draw(title_);
         target.draw(hint_);
         // 此代码块按配置顺序绘制当前阶段可用的全部按钮。
@@ -97,7 +153,12 @@ namespace autochess::game
                 choice.button->draw(target);
             }
         }
-        target.draw(message_);
+        // 此代码块让最近命令结果显示三秒后自动隐藏。
+        if (!message_.getString().isEmpty()
+            && messageClock_.getElapsedTime().asSeconds() < 3.0F)
+        {
+            target.draw(message_);
+        }
     }
 
     // 此函数返回一次选择命令动作并清除内部待处理状态。
@@ -120,6 +181,7 @@ namespace autochess::game
                 view_.selectedMap->width,
                 view_.selectedMap->height);
         }
+        refreshPreparationWidgets();
         // 此代码块避免同一阶段每个渲染帧重复分配按钮。
         if (builtPhase_ != view_.phase)
         {
@@ -136,13 +198,16 @@ namespace autochess::game
             result.success
                 ? sf::Color(100, 215, 135)
                 : sf::Color(240, 105, 105));
+        messageClock_.restart();
     }
 
     // 此函数根据核心选择列表建立动态数量的选择按钮。
     void MatchScreen::rebuildChoices()
     {
         choices_.clear();
+        shopCards_.clear();
         routeToggleButton_.reset();
+        refreshButton_.reset();
         message_.setString(L"");
 
         title_.setPosition(470.0F, 80.0F);
@@ -227,7 +292,117 @@ namespace autochess::game
                 sf::FloatRect(690.0F, 18.0F, 170.0F, 46.0F),
                 L"显示路线",
                 20);
+
+            // 此代码块为正式六槽商店建立两列三行的稳定按钮布局。
+            if (view_.selfShop.has_value())
+            {
+                for (std::size_t slot = 0;
+                     slot < view_.selfShop->offers.size();
+                     ++slot)
+                {
+                    const std::size_t column = slot % 2;
+                    const std::size_t row = slot / 2;
+                    ShopCard card;
+                    card.slot = slot;
+                    card.button = std::make_unique<Button>(
+                        font_,
+                        sf::FloatRect(
+                            880.0F + 190.0F * static_cast<float>(column),
+                            112.0F + 102.0F * static_cast<float>(row),
+                            178.0F,
+                            86.0F),
+                        L"商品",
+                        19);
+                    shopCards_.push_back(std::move(card));
+                }
+            }
+
+            refreshButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(880.0F, 430.0F, 368.0F, 52.0F),
+                L"刷新商店",
+                21);
+            refreshPreparationWidgets();
         }
+    }
+
+    // 此函数从只读快照生成准备 HUD 并同步全部商店按钮。
+    void MatchScreen::refreshPreparationWidgets()
+    {
+        // 此代码块在非准备阶段或缺少玩家数据时保持控件为空。
+        if (view_.phase != core::MatchPhase::Preparation
+            || !view_.self.has_value()
+            || !view_.selfShop.has_value())
+        {
+            hud_.setString(L"");
+            shopTitle_.setString(L"");
+            return;
+        }
+
+        const core::PlayerState& player = view_.self.value();
+        const int opponentGuard = view_.opponent.available
+            ? view_.opponent.guardValue
+            : 0;
+        const std::uint64_t secondsRemaining =
+            (view_.preparationFramesRemaining + 59U) / 60U;
+        std::wostringstream hudStream;
+        hudStream << L"第 " << view_.currentRound << L" / "
+                  << view_.maxRounds << L" 回合    金币 " << player.gold
+                  << L"    我方守卫 " << player.guardValue
+                  << L"    敌方守卫 " << opponentGuard
+                  << L"    剩余 " << secondsRemaining << L" 秒";
+        hud_.setString(hudStream.str());
+        shopTitle_.setString(L"商店");
+
+        const core::ShopState& shop = view_.selfShop.value();
+        // 此代码块逐槽显示核心价格并禁用已经购买的空商品。
+        for (ShopCard& card : shopCards_)
+        {
+            if (card.button == nullptr || card.slot >= shop.offers.size())
+            {
+                continue;
+            }
+            const std::optional<core::ShopOffer>& offer =
+                shop.offers[card.slot];
+            if (!offer.has_value())
+            {
+                card.button->setLabel(L"已购买");
+                card.button->setEnabled(false);
+                continue;
+            }
+
+            sf::String label = unitName(offer->unitId);
+            label += L"  Lv.1\n";
+            label += sf::String(std::to_wstring(offer->displayedPrice));
+            label += L" 金币";
+            card.button->setLabel(label);
+            card.button->setEnabled(true);
+        }
+
+        // 此代码块让刷新按钮显示正式配置中的费用但仍允许核心报告金币不足。
+        if (refreshButton_ != nullptr)
+        {
+            sf::String label = L"刷新商店  ";
+            label += sf::String(std::to_wstring(
+                config_.gameConfig.shopRefreshCost));
+            label += L" 金币";
+            refreshButton_->setLabel(label);
+            refreshButton_->setEnabled(true);
+        }
+    }
+
+    // 此函数从已校验配置查找单位中文名且缺失时显示稳定 ID。
+    sf::String MatchScreen::unitName(const std::string& unitId) const
+    {
+        // 此代码块线性查找数量固定为五个的单位定义集合。
+        for (const core::UnitDefinition& definition : config_.units)
+        {
+            if (definition.id == unitId)
+            {
+                return fromUtf8(definition.name);
+            }
+        }
+        return fromUtf8(unitId);
     }
 
     // 此函数只根据当前阶段构造一条 A 方地图、分队或策略命令。
