@@ -2,6 +2,7 @@
 
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/match/Match.hpp"
+#include "game/screens/Screen.hpp"
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
@@ -30,6 +31,15 @@ namespace autochess::game
         // 此函数处理一次窗口事件并保持关闭操作随时可用。
         void handleEvent(const sf::Event& event);
 
+        // 此函数消费当前页面动作并执行应用级导航。
+        void processUiAction();
+
+        // 此函数切换到全新主菜单页面。
+        void showMainMenu();
+
+        // 此函数切换到全新帮助页面。
+        void showHelp();
+
         // 此函数仅在核心处于可推进阶段时执行一个固定模拟帧。
         void fixedUpdate();
 
@@ -40,6 +50,7 @@ namespace autochess::game
         sf::Font font_;
         core::ConfigBundle config_;
         std::unique_ptr<core::Match> match_;
+        std::unique_ptr<Screen> screen_;
         sf::Clock frameClock_;
         float accumulatorSeconds_ = 0.0F;
     };

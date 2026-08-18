@@ -1,5 +1,8 @@
 #include "game/GameApp.hpp"
 
+#include "game/screens/HelpScreen.hpp"
+#include "game/screens/MainMenuScreen.hpp"
+
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/Window/Event.hpp>
@@ -36,6 +39,9 @@ namespace autochess::game
         {
             return 1;
         }
+
+        // 此代码块在资源可用后创建第一个可交互主菜单页面。
+        showMainMenu();
 
         // 此代码块在窗口存活期间限制累计时间并按固定步长更新核心。
         while (window_.isOpen())
@@ -118,7 +124,62 @@ namespace autochess::game
         if (event.type == sf::Event::Closed)
         {
             window_.close();
+            return;
         }
+
+        // 此代码块把非系统事件交给唯一当前页面并立即消费其动作。
+        if (screen_ != nullptr)
+        {
+            screen_->handleEvent(event);
+            processUiAction();
+        }
+    }
+
+    // 此函数将屏幕动作转换为页面切换、退出或下一步占位行为。
+    void GameApp::processUiAction()
+    {
+        // 此代码块在没有当前页面时拒绝读取动作。
+        if (screen_ == nullptr)
+        {
+            return;
+        }
+
+        const UiAction action = screen_->takeAction();
+        // 此代码块保证空动作不会触发任何应用状态变化。
+        if (action.kind == UiActionKind::None)
+        {
+            return;
+        }
+
+        // 此代码块执行第七天菜单阶段已经具备的应用导航。
+        if (action.kind == UiActionKind::ShowHelp)
+        {
+            showHelp();
+        }
+        else if (action.kind == UiActionKind::BackToMenu)
+        {
+            showMainMenu();
+        }
+        else if (action.kind == UiActionKind::ExitApplication)
+        {
+            window_.close();
+        }
+        else if (action.kind == UiActionKind::StartGame)
+        {
+            std::cout << "[UI] 开始游戏按钮已生效，选择流程将在步骤 7.4 接通\n";
+        }
+    }
+
+    // 此函数用统一字体构造没有残留交互状态的主菜单。
+    void GameApp::showMainMenu()
+    {
+        screen_ = std::make_unique<MainMenuScreen>(font_);
+    }
+
+    // 此函数用统一字体构造没有残留交互状态的帮助页面。
+    void GameApp::showHelp()
+    {
+        screen_ = std::make_unique<HelpScreen>(font_);
     }
 
     // 此函数把固定步长只发送给准备、战斗和结算阶段的核心对局。
@@ -145,14 +206,11 @@ namespace autochess::game
     {
         window_.clear(sf::Color(30, 30, 40));
 
-        // 此代码块使用中文字体绘制可直接观察的第七天启动基线。
-        sf::Text title;
-        title.setFont(font_);
-        title.setString(L"自走棋对战系统\n第 7 天资源加载成功");
-        title.setCharacterSize(36);
-        title.setFillColor(sf::Color(235, 235, 245));
-        title.setPosition(390.0F, 285.0F);
-        window_.draw(title);
+        // 此代码块只绘制当前页面，避免页面之间残留控件。
+        if (screen_ != nullptr)
+        {
+            screen_->draw(window_);
+        }
 
         window_.display();
     }
