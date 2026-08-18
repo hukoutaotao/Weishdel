@@ -117,6 +117,9 @@ target_compile_options(
 
 add_executable(
     AutoChessGame
+    # 将第七天窗口、资源和固定步长运行骨架编译进游戏目标。
+    src/game/GameApp.cpp
+    src/game/GameApp.hpp
     src/game/main.cpp
 )
 
@@ -134,6 +137,13 @@ target_compile_options(
     PRIVATE
     /W4
     /utf-8
+)
+
+# 向图形程序提供开发期正式数据目录，避免启动目录变化导致配置缺失。
+target_compile_definitions(
+    AutoChessGame
+    PRIVATE
+    AUTOCHESS_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
 )
 
 add_custom_command(
