@@ -3,6 +3,7 @@
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/economy/EconomyTypes.hpp"
 #include "core/match/GameCommand.hpp"
+#include "core/match/ReadOnlyGameView.hpp"
 
 #include <random>
 #include <string>
@@ -38,6 +39,9 @@ namespace autochess::core
         // 此函数按阵营返回只读商店状态且未创建时返回空指针。
         const ShopState* shopState(MapSide side) const noexcept;
 
+        // 此函数生成按观察阵营裁剪且不引用内部对象的值拷贝快照。
+        ReadOnlyGameView viewFor(MapSide viewer) const;
+
     private:
         // 此函数执行地图选择并推进到玩家分队选择阶段。
         CommandResult selectMap(
@@ -53,6 +57,20 @@ namespace autochess::core
         CommandResult selectAiStrategy(
             MapSide actor,
             const SelectAiStrategyCommand& command);
+
+        // 此函数把准备阶段经济命令转发到现有规则服务。
+        CommandResult executePreparationCommand(const GameCommand& command);
+
+        // 此函数按阵营返回可修改的玩家状态。
+        PlayerState* mutablePlayer(MapSide side) noexcept;
+
+        // 此函数按阵营返回可修改的商店状态。
+        ShopState* mutableShop(MapSide side) noexcept;
+
+        // 此函数判断指定 ID 是否存在于玩家活动或死亡名单中。
+        static bool containsOwnedUnit(
+            const PlayerState& player,
+            OwnedUnitId unitId) noexcept;
 
         // 此函数查找配置中的地图定义。
         const MapDefinition* findMap(const std::string& mapId) const noexcept;
@@ -75,5 +93,8 @@ namespace autochess::core
         ShopState shopB_;
         bool playersCreated_ = false;
         OwnedUnitId nextOwnedUnitId_ = 1;
+        std::uint64_t preparationFramesRemaining_ = 0;
+        std::optional<RoundSummary> lastRound_;
+        MatchResultSummary result_;
     };
 }

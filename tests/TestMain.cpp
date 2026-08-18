@@ -725,6 +725,170 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数验证准备阶段统一入口能够驱动全部经济服务并生成隔离视图。
+    int runMatchPreparationCommandTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+        runner.check(
+            loaded,
+            "Match preparation commands load formal configuration");
+        // 此分支在正式配置加载失败时停止准备命令测试。
+        if (!loaded || bundle.units.empty())
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码块把商店池限制为铁卫以获得确定性的合成测试商品。
+        bundle.units = {bundle.units.front()};
+        autochess::core::Match match(bundle);
+        const bool selected =
+            match.submit({
+                autochess::core::MapSide::A,
+                autochess::core::SelectMapCommand{"map_01"}}).success
+            && match.submit({
+                autochess::core::MapSide::A,
+                autochess::core::SelectFactionCommand{"training_team"}})
+                   .success
+            && match.submit({
+                autochess::core::MapSide::A,
+                autochess::core::SelectAiStrategyCommand{
+                    autochess::core::AiStrategyKind::Defensive}}).success
+            && match.submit({
+                autochess::core::MapSide::B,
+                autochess::core::SelectFactionCommand{"assault_team"}})
+                   .success;
+        runner.check(selected, "Match preparation reaches first round");
+        // 此分支在选择流程失败时停止依赖准备阶段的后续测试。
+        if (!selected)
+        {
+            return runner.failureCount();
+        }
+
+        auto viewA = match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            viewA.phase == autochess::core::MatchPhase::Preparation
+                && viewA.maps.size() == 2
+                && viewA.factions.size() == 3
+                && viewA.aiStrategies.size() == 3
+                && viewA.selectedMap.has_value()
+                && viewA.self.has_value()
+                && viewA.selfShop.has_value()
+                && viewA.self->gold == 15
+                && viewA.selfShop->offers.size() == 6
+                && viewA.opponent.available
+                && viewA.opponent.guardValue == 100,
+            "Read-only view exposes self data and public opponent data");
+
+        viewA.self->gold = 999;
+        viewA.selfShop->offers.clear();
+        const auto isolatedView =
+            match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            isolatedView.self->gold == 15
+                && isolatedView.selfShop->offers.size() == 6,
+            "Read-only view mutations cannot change Match state");
+
+        const auto purchaseOne = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::PurchaseUnitCommand{0}});
+        const auto purchaseTwo = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::PurchaseUnitCommand{1}});
+        const auto merge = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::MergeUnitsCommand{1, 2}});
+        const auto afterMerge =
+            match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            purchaseOne.success
+                && purchaseTwo.success
+                && merge.success
+                && afterMerge.self->activeUnits.size() == 1
+                && afterMerge.self->activeUnits.front().id == 3
+                && afterMerge.self->activeUnits.front().identity.level == 2
+                && afterMerge.self->gold == 10,
+            "Match dispatches purchases and merge through one entry");
+
+        autochess::core::GridPosition deploymentStart;
+        bool foundDeploymentStart = false;
+        // 此循环选择正式地图中第一个 A 方合法部署起点。
+        for (const autochess::core::Route& route
+             : afterMerge.selectedMap->routes)
+        {
+            // 此分支在找到 A 方路线时记录其部署起点。
+            if (route.side == autochess::core::MapSide::A)
+            {
+                deploymentStart = route.start;
+                foundDeploymentStart = true;
+                break;
+            }
+        }
+
+        const auto deploy = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::MoveToDeploymentCommand{
+                3,
+                deploymentStart}});
+        const auto viewB = match.viewFor(autochess::core::MapSide::B);
+        runner.check(
+            foundDeploymentStart
+                && deploy.success
+                && viewB.opponent.deployments.size() == 1
+                && viewB.opponent.deployments.front().id == 3,
+            "Match dispatches deployment and publishes opponent placement");
+
+        const auto wrongOwner = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::SellUnitCommand{3}});
+        runner.check(
+            !wrongOwner.success
+                && wrongOwner.errorCode
+                    == autochess::core::CommandErrorCode::WrongOwner,
+            "Match rejects commands targeting an opponent unit");
+
+        const auto withdraw = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::MoveToReserveCommand{3, 0}});
+        const auto invalidRevive = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::ReviveUnitCommand{3}});
+        const auto sell = match.submit({
+            autochess::core::MapSide::A,
+            autochess::core::SellUnitCommand{3}});
+        runner.check(
+            withdraw.success
+                && !invalidRevive.success
+                && invalidRevive.errorCode
+                    == autochess::core::CommandErrorCode::UnitAlreadyActive
+                && sell.success
+                && match.viewFor(autochess::core::MapSide::A)
+                       .self->activeUnits.empty()
+                && match.viewFor(autochess::core::MapSide::A).self->gold == 12,
+            "Match dispatches reserve, revive validation, and sell commands");
+
+        const auto refresh = match.submit({
+            autochess::core::MapSide::B,
+            autochess::core::RefreshShopCommand{}});
+        const auto invalidActor = match.submit({
+            autochess::core::MapSide::Unknown,
+            autochess::core::RefreshShopCommand{}});
+        runner.check(
+            refresh.success
+                && match.viewFor(autochess::core::MapSide::B).self->gold == 13
+                && !invalidActor.success
+                && invalidActor.errorCode
+                    == autochess::core::CommandErrorCode::InvalidActor,
+            "Match dispatches refresh and rejects an unknown actor");
+
+        return runner.failureCount();
+    }
+
     int runPriceRulesTests()
     {
         TestRunner runner;
@@ -6786,6 +6950,16 @@ int main()
     }
 
     std::cout << "[PASS] Match selection test suite\n";
+
+    const int matchPreparationFailures = runMatchPreparationCommandTests();
+    assert(matchPreparationFailures == 0);
+    // 此分支把 Match 准备命令和只读视图测试失败转换为非零退出码。
+    if (matchPreparationFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Match preparation command test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);

@@ -81,6 +81,8 @@ add_library(
     src/core/match/Match.hpp
     src/core/match/MatchTypes.cpp
     src/core/match/MatchTypes.hpp
+    # 将按阵营裁剪的只读游戏快照类型暴露给界面和控制器。
+    src/core/match/ReadOnlyGameView.hpp
     # 将回合收入、败者补助和商店重建事务编译进核心库。
     src/core/match/RoundController.cpp
     src/core/match/RoundController.hpp
