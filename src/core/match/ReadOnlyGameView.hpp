@@ -58,6 +58,9 @@ namespace autochess::core
         std::optional<PlayerState> self;
         std::optional<ShopState> selfShop;
         PublicOpponentView opponent;
+        // 此代码块公开当前战斗摘要和由核心计算的剩余战斗帧数。
+        std::optional<BattleSummary> battleSummary;
+        std::uint64_t combatFramesRemaining = 0;
         std::vector<BattleUnit> battleUnits;
         std::optional<RoundSummary> lastRound;
         MatchResultSummary result;

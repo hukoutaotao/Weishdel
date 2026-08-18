@@ -998,8 +998,27 @@ namespace
                     == autochess::core::CommandErrorCode::InvalidActor
                 && sideAStart.success
                 && combatView.phase == autochess::core::MatchPhase::Combat
-                && combatView.battleUnits.size() == 2,
+                && combatView.battleUnits.size() == 2
+                && combatView.battleSummary.has_value()
+                && combatView.battleSummary->endReason
+                    == autochess::core::BattleSummary::EndReason::Ongoing
+                && combatView.combatFramesRemaining
+                    == static_cast<std::uint64_t>(
+                           bundle.gameConfig.combatTimeoutSeconds)
+                        * 60U,
             "Match permits only side A to start a ready battle");
+
+        // 此代码块验证战斗固定帧推进会同步减少只读快照中的剩余时间。
+        const std::uint64_t framesBeforeStep =
+            combatView.combatFramesRemaining;
+        match.step();
+        const auto afterOneCombatFrame =
+            match.viewFor(autochess::core::MapSide::A);
+        runner.check(
+            afterOneCombatFrame.phase == autochess::core::MatchPhase::Combat
+                && afterOneCombatFrame.combatFramesRemaining
+                    == framesBeforeStep - 1U,
+            "Read-only combat timer decreases by one fixed frame");
 
         const auto purchaseDuringCombat = match.submit({
             autochess::core::MapSide::A,

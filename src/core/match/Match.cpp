@@ -942,7 +942,19 @@ namespace autochess::core
         // 此分支在战斗存在时复制全部实时战斗单位供界面和控制器读取。
         if (battle_ != nullptr)
         {
+            // 此代码块复制战斗摘要并把核心帧数转换为界面可读的剩余帧数。
             view.battleUnits = battle_->units();
+            view.battleSummary = battle_->summary();
+            const std::uint64_t timeoutFrames = config_.gameConfig
+                .combatTimeoutSeconds <= 0
+                ? 0U
+                : static_cast<std::uint64_t>(
+                      config_.gameConfig.combatTimeoutSeconds)
+                    * 60U;
+            const std::uint64_t elapsedFrames = battle_->currentFrame();
+            view.combatFramesRemaining = elapsedFrames >= timeoutFrames
+                ? 0U
+                : timeoutFrames - elapsedFrames;
         }
 
         return view;
