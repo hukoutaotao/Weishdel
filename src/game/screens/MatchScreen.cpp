@@ -1,5 +1,7 @@
 #include "game/screens/MatchScreen.hpp"
 
+#include "game/rendering/MapRenderer.hpp"
+
 namespace autochess::game
 {
     namespace
@@ -48,6 +50,15 @@ namespace autochess::game
     // 此函数把一次选择按钮点击转换为待提交核心命令。
     void MatchScreen::handleEvent(const sf::Event& event)
     {
+        // 此代码块让路线调试开关只在已经选定地图时可用。
+        if (routeToggleButton_ != nullptr
+            && routeToggleButton_->handleEvent(event))
+        {
+            showRoutes_ = !showRoutes_;
+            routeToggleButton_->setLabel(
+                showRoutes_ ? L"隐藏路线" : L"显示路线");
+        }
+
         // 此代码块按配置顺序检测全部当前阶段选择按钮。
         for (const Choice& choice : choices_)
         {
@@ -62,6 +73,20 @@ namespace autochess::game
     // 此函数绘制选择标题、阶段说明、全部选项和最近命令结果。
     void MatchScreen::draw(sf::RenderTarget& target) const
     {
+        // 此代码块在选定地图后的所有阶段绘制棋盘和路线开关。
+        if (view_.selectedMap.has_value() && boardTransform_.valid())
+        {
+            MapRenderer::draw(
+                target,
+                view_.selectedMap.value(),
+                boardTransform_,
+                showRoutes_);
+            if (routeToggleButton_ != nullptr)
+            {
+                routeToggleButton_->draw(target);
+            }
+        }
+
         target.draw(title_);
         target.draw(hint_);
         // 此代码块按配置顺序绘制当前阶段可用的全部按钮。
@@ -87,6 +112,14 @@ namespace autochess::game
     void MatchScreen::updateView(const core::ReadOnlyGameView& view)
     {
         view_ = view;
+        // 此代码块在地图存在时为固定棋盘视口更新双向坐标变换。
+        if (view_.selectedMap.has_value())
+        {
+            boardTransform_.configure(
+                sf::FloatRect(20.0F, 88.0F, 840.0F, 504.0F),
+                view_.selectedMap->width,
+                view_.selectedMap->height);
+        }
         // 此代码块避免同一阶段每个渲染帧重复分配按钮。
         if (builtPhase_ != view_.phase)
         {
@@ -109,7 +142,12 @@ namespace autochess::game
     void MatchScreen::rebuildChoices()
     {
         choices_.clear();
+        routeToggleButton_.reset();
         message_.setString(L"");
+
+        title_.setPosition(470.0F, 80.0F);
+        hint_.setPosition(425.0F, 150.0F);
+        message_.setPosition(390.0F, 625.0F);
 
         const float buttonLeft = 390.0F;
         const float buttonWidth = 500.0F;
@@ -180,7 +218,15 @@ namespace autochess::game
         else
         {
             title_.setString(L"准备阶段");
-            hint_.setString(L"选择流程完成，准备界面将在步骤 7.5 开始绘制");
+            hint_.setString(L"蓝色为己方部署格，红色为电脑部署格");
+            title_.setPosition(20.0F, 18.0F);
+            hint_.setPosition(220.0F, 28.0F);
+            message_.setPosition(890.0F, 650.0F);
+            routeToggleButton_ = std::make_unique<Button>(
+                font_,
+                sf::FloatRect(690.0F, 18.0F, 170.0F, 46.0F),
+                L"显示路线",
+                20);
         }
     }
 

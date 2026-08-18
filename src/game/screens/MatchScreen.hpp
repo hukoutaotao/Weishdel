@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/match/ReadOnlyGameView.hpp"
+#include "game/rendering/BoardTransform.hpp"
 #include "game/screens/Screen.hpp"
 #include "game/ui/Button.hpp"
 
@@ -49,6 +50,9 @@ namespace autochess::game
         sf::Text hint_;
         sf::Text message_;
         std::vector<Choice> choices_;
+        BoardTransform boardTransform_;
+        std::unique_ptr<Button> routeToggleButton_;
+        bool showRoutes_ = false;
         UiAction pendingAction_;
     };
 }

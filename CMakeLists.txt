@@ -125,6 +125,11 @@ add_executable(
     src/game/controllers/HumanController.hpp
     src/game/controllers/BootstrapComputerController.cpp
     src/game/controllers/BootstrapComputerController.hpp
+    # 将地图格子换算和色块路线绘制器编译进表现层。
+    src/game/rendering/BoardTransform.cpp
+    src/game/rendering/BoardTransform.hpp
+    src/game/rendering/MapRenderer.cpp
+    src/game/rendering/MapRenderer.hpp
     # 将抽象屏幕、主菜单、帮助页和通用按钮编译进表现层。
     src/game/screens/Screen.hpp
     src/game/screens/MainMenuScreen.cpp
