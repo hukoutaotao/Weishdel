@@ -132,11 +132,9 @@ add_executable(
     # 将第七天窗口、资源和固定步长运行骨架编译进游戏目标。
     src/game/GameApp.cpp
     src/game/GameApp.hpp
-    # 将真人命令队列和第七天占位电脑控制器编译进游戏目标。
+    # 将真人命令队列编译进表现层游戏目标。
     src/game/controllers/HumanController.cpp
     src/game/controllers/HumanController.hpp
-    src/game/controllers/BootstrapComputerController.cpp
-    src/game/controllers/BootstrapComputerController.hpp
     # 将地图格子换算和色块路线绘制器编译进表现层。
     src/game/rendering/BoardTransform.cpp
     src/game/rendering/BoardTransform.hpp

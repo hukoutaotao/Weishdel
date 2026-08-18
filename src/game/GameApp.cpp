@@ -217,8 +217,10 @@ namespace autochess::game
     {
         match_ = std::make_unique<core::Match>(config_);
         humanController_ = std::make_unique<HumanController>(core::MapSide::A);
-        computerController_ =
-            std::make_unique<BootstrapComputerController>();
+        // 此代码块让正式 AI 控制器负责 B 方并读取同一份配置快照。
+        computerController_ = std::make_unique<core::AiController>(
+            config_,
+            core::MapSide::B);
         screen_ = std::make_unique<MatchScreen>(font_, config_);
         accumulatorSeconds_ = 0.0F;
         paused_ = false;
@@ -276,8 +278,10 @@ namespace autochess::game
 
         match_ = std::move(restartedMatch);
         humanController_ = std::make_unique<HumanController>(core::MapSide::A);
-        computerController_ =
-            std::make_unique<BootstrapComputerController>();
+        // 此代码块在重开后重新注入配置，避免复用旧控制器状态。
+        computerController_ = std::make_unique<core::AiController>(
+            config_,
+            core::MapSide::B);
         paused_ = false;
         settlementHoldFrames_ = 0;
         accumulatorSeconds_ = 0.0F;

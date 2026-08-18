@@ -2,7 +2,7 @@
 
 #include "core/config/ConfigBundleLoader.hpp"
 #include "core/match/Match.hpp"
-#include "game/controllers/BootstrapComputerController.hpp"
+#include "core/ai/AiController.hpp"
 #include "game/controllers/HumanController.hpp"
 #include "game/screens/Screen.hpp"
 
@@ -69,7 +69,8 @@ namespace autochess::game
         core::ConfigBundle config_;
         std::unique_ptr<core::Match> match_;
         std::unique_ptr<HumanController> humanController_;
-        std::unique_ptr<BootstrapComputerController> computerController_;
+        // 此成员保存注入正式配置的统一电脑控制器。
+        std::unique_ptr<core::AiController> computerController_;
         std::unique_ptr<Screen> screen_;
         sf::Clock frameClock_;
         float accumulatorSeconds_ = 0.0F;
