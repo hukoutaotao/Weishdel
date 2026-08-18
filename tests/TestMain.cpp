@@ -28,6 +28,7 @@
 #include "core/skills/Skill.hpp"
 #include "core/skills/SkillSystem.hpp"
 #include "core/units/Unit.hpp"
+#include "MatchScriptedTests.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -7180,6 +7181,16 @@ int main()
     }
 
     std::cout << "[PASS] Match round flow test suite\n";
+
+    const int scriptedMatchFailures = runScriptedMatchTests();
+    assert(scriptedMatchFailures == 0);
+    // 此分支把脚本控制器完整对局失败转换为非零退出码。
+    if (scriptedMatchFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Scripted match test suite\n";
 
     const int priceRulesFailures = runPriceRulesTests();
     assert(priceRulesFailures == 0);

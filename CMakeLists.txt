@@ -44,6 +44,8 @@ add_library(
     src/core/config/GameConfigLoader.hpp
     src/core/config/MapConfigLoader.cpp
     src/core/config/MapConfigLoader.hpp
+    # 将真人、脚本和未来 AI 共用的控制器抽象接口加入核心目标。
+    src/core/controllers/IPlayerController.hpp
     src/core/config/ConfigParser.cpp
     src/core/config/ConfigParser.hpp
     src/core/config/ConfigValueReader.cpp
@@ -156,6 +158,9 @@ add_custom_command(
 add_executable(
     AutoChessTests
     tests/TestMain.cpp
+    # 将脚本控制器完整对局测试编译为独立测试源文件。
+    tests/MatchScriptedTests.cpp
+    tests/MatchScriptedTests.hpp
 )
 
 target_link_libraries(
