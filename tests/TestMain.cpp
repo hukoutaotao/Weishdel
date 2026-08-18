@@ -25,6 +25,7 @@
 #include "core/skills/SkillSystem.hpp"
 #include "core/units/Unit.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <filesystem>
@@ -5835,6 +5836,244 @@ namespace
         return runner.failureCount();
     }
 
+    // 此函数用正式配置验证五个单位技能矩阵和分队属性不累积。
+    int runDay5SkillMatrixTests()
+    {
+        TestRunner runner;
+        autochess::core::ConfigBundle bundle;
+        autochess::core::ConfigError loadError;
+        const bool loaded = autochess::core::ConfigBundleLoader::load(
+            AUTOCHESS_DATA_DIR,
+            bundle,
+            loadError);
+
+        // 此辅助代码块按正式 ID 查找单位和分队定义供矩阵逐项创建施法者。
+        const auto findUnitDefinition = [&bundle](const std::string& id)
+        {
+            const auto iterator = std::find_if(
+                bundle.units.begin(),
+                bundle.units.end(),
+                [&id](const autochess::core::UnitDefinition& definition)
+                {
+                    return definition.id == id;
+                });
+            return iterator == bundle.units.end() ? nullptr : &*iterator;
+        };
+        const auto findFactionDefinition = [&bundle](const std::string& id)
+        {
+            const auto iterator = std::find_if(
+                bundle.factions.begin(),
+                bundle.factions.end(),
+                [&id](const autochess::core::FactionDefinition& definition)
+                {
+                    return definition.id == id;
+                });
+            return iterator == bundle.factions.end() ? nullptr : &*iterator;
+        };
+
+        const auto* guardDefinition = findUnitDefinition("training_guard");
+        const auto* duelistDefinition = findUnitDefinition("duelist");
+        const auto* rangerDefinition = findUnitDefinition("ranger");
+        const auto* arcanistDefinition = findUnitDefinition("arcanist");
+        const auto* medicDefinition = findUnitDefinition("medic");
+        const auto* defenseFaction = findFactionDefinition("training_team");
+        const auto* assaultFaction = findFactionDefinition("assault_team");
+        const auto* routeFaction = findFactionDefinition("route_team");
+        const bool definitionsFound = loaded
+            && !bundle.maps.empty()
+            && guardDefinition != nullptr
+            && duelistDefinition != nullptr
+            && rangerDefinition != nullptr
+            && arcanistDefinition != nullptr
+            && medicDefinition != nullptr
+            && defenseFaction != nullptr
+            && assaultFaction != nullptr
+            && routeFaction != nullptr;
+        runner.check(
+            definitionsFound,
+            "Day 5 skill matrix finds all formal units and factions");
+        if (!definitionsFound)
+        {
+            return runner.failureCount();
+        }
+
+        // 此辅助代码块从正式单位、等级和分队定义创建满技力施法者。
+        const auto prepareCaster = [&bundle](
+            const autochess::core::UnitDefinition& definition,
+            const autochess::core::FactionDefinition& faction,
+            const autochess::core::BattleUnitId id,
+            autochess::core::BattleUnit& output)
+        {
+            output = autochess::core::BattleUnit{};
+            output.id = id;
+            output.ownedUnitId = id * 10;
+            output.identity = {definition.id, 1};
+            output.side = autochess::core::MapSide::A;
+            output.basicAction = definition.basicAction;
+            output.basicDamageType = definition.basicDamageType;
+            output.skillId = definition.skillId;
+            output.currentMana = static_cast<double>(definition.maxMana);
+            output.maxMana = static_cast<double>(definition.maxMana);
+            output.position = {2.5, 3.5};
+            std::string errorMessage;
+            if (!autochess::core::BattleStatResolver::resolve(
+                    definition,
+                    1,
+                    faction,
+                    bundle.factionModifiers,
+                    output.stats,
+                    errorMessage))
+            {
+                return false;
+            }
+            output.baseStats = output.stats;
+            output.health = output.stats.maxHealth;
+            return true;
+        };
+
+        // 此辅助代码块创建具有固定防御和法抗的技能目标用于数值断言。
+        const auto makeTarget = [](
+            const autochess::core::BattleUnitId id,
+            const autochess::core::MapSide side,
+            const autochess::core::BattlePosition position,
+            const double health)
+        {
+            autochess::core::BattleUnit target;
+            target.id = id;
+            target.ownedUnitId = id * 10;
+            target.identity = {"matrix_target", 1};
+            target.side = side;
+            target.position = position;
+            target.baseStats.maxHealth = 100.0;
+            target.baseStats.physicalDefense = 7.0;
+            target.baseStats.magicResistance = 20.0;
+            target.stats = target.baseStats;
+            target.health = health;
+            return target;
+        };
+
+        autochess::core::BattleUnit guard;
+        autochess::core::BattleUnit duelist;
+        autochess::core::BattleUnit ranger;
+        autochess::core::BattleUnit arcanist;
+        autochess::core::BattleUnit medic;
+        const bool castersPrepared = prepareCaster(
+                *guardDefinition, *defenseFaction, 10, guard)
+            && prepareCaster(
+                *duelistDefinition, *assaultFaction, 20, duelist)
+            && prepareCaster(
+                *rangerDefinition, *assaultFaction, 30, ranger)
+            && prepareCaster(
+                *arcanistDefinition, *routeFaction, 40, arcanist)
+            && prepareCaster(
+                *medicDefinition, *routeFaction, 50, medic);
+        runner.check(
+            castersPrepared,
+            "Day 5 skill matrix resolves all faction battle stats");
+        if (!castersPrepared)
+        {
+            return runner.failureCount();
+        }
+
+        // 此代码块验证铁卫增益结束和回满技力后再次释放仍从分队基础防御计算。
+        autochess::core::BattleSimulation guardSimulation(
+            {guard}, bundle.maps.front(), 60, bundle.skills);
+        const bool firstGuardRelease = guardSimulation.releaseSkill(10);
+        const bool firstGuardValue = firstGuardRelease
+            && guardSimulation.units()[0].baseStats.physicalDefense == 22.0
+            && guardSimulation.units()[0].stats.physicalDefense == 30.0;
+        for (int frame = 0; frame < 180; ++frame)
+        {
+            guardSimulation.step();
+        }
+        const bool guardRestored =
+            guardSimulation.units()[0].stats.physicalDefense == 22.0
+            && !guardSimulation.units()[0].activeSkill.active;
+        for (int frame = 0; frame < 600; ++frame)
+        {
+            guardSimulation.step();
+        }
+        const bool secondGuardRelease = guardSimulation.releaseSkill(10);
+        runner.check(
+            firstGuardValue
+                && guardRestored
+                && secondGuardRelease
+                && guardSimulation.units()[0].stats.physicalDefense == 30.0,
+            "Iron guard buff preserves faction base stats without accumulation");
+
+        // 此代码块验证决斗者正式技能造成一次配置驱动的单体物理伤害。
+        auto duelistTarget = makeTarget(
+            21, autochess::core::MapSide::B, {3.5, 3.5}, 100.0);
+        autochess::core::BattleSimulation duelistSimulation(
+            {duelist, duelistTarget},
+            bundle.maps.front(),
+            60,
+            bundle.skills);
+        runner.check(
+            nearlyEqual(duelist.baseStats.attackPower, 35.84)
+                && duelistSimulation.releaseSkill(20)
+                && duelistSimulation.units()[1].health == 85.0,
+            "Duelist releases its formal single-target physical skill");
+
+        // 此代码块验证游侠正式技能从突击分队基础攻速计算乘法增益。
+        autochess::core::BattleSimulation rangerSimulation(
+            {ranger}, bundle.maps.front(), 60, bundle.skills);
+        runner.check(
+            ranger.baseStats.attackSpeed == 130.0
+                && rangerSimulation.releaseSkill(30)
+                && nearlyEqual(
+                    rangerSimulation.units()[0].stats.attackSpeed,
+                    149.5),
+            "Ranger releases its formal multiplicative speed buff");
+
+        // 此代码块验证奥术师正式技能只伤害范围内最近的三个敌方单位。
+        auto arcaneTargetA = makeTarget(
+            41, autochess::core::MapSide::B, {3.5, 3.5}, 100.0);
+        auto arcaneTargetB = makeTarget(
+            42, autochess::core::MapSide::B, {4.5, 3.5}, 100.0);
+        auto arcaneTargetC = makeTarget(
+            43, autochess::core::MapSide::B, {5.5, 3.5}, 100.0);
+        auto arcaneTargetD = makeTarget(
+            44, autochess::core::MapSide::B, {6.5, 3.5}, 100.0);
+        autochess::core::BattleSimulation arcanistSimulation(
+            {arcanist,
+             arcaneTargetD,
+             arcaneTargetB,
+             arcaneTargetA,
+             arcaneTargetC},
+            bundle.maps.front(),
+            60,
+            bundle.skills);
+        const bool arcanistReleased = arcanistSimulation.releaseSkill(40);
+        runner.check(
+            arcanistReleased
+                && arcanistSimulation.units()[1].health == 100.0
+                && nearlyEqual(arcanistSimulation.units()[2].health, 85.6)
+                && nearlyEqual(arcanistSimulation.units()[3].health, 85.6)
+                && nearlyEqual(arcanistSimulation.units()[4].health, 85.6),
+            "Arcanist releases its formal three-target magic skill");
+
+        // 此代码块验证医师正式技能按生命比例和编号治疗一个受伤友军。
+        auto medicHigherId = makeTarget(
+            52, autochess::core::MapSide::A, {3.5, 3.5}, 20.0);
+        auto medicLowerId = medicHigherId;
+        medicLowerId.id = 51;
+        medicLowerId.ownedUnitId = 510;
+        autochess::core::BattleSimulation medicSimulation(
+            {medic, medicHigherId, medicLowerId},
+            bundle.maps.front(),
+            60,
+            bundle.skills);
+        const bool medicReleased = medicSimulation.releaseSkill(50);
+        runner.check(
+            medicReleased
+                && medicSimulation.units()[1].health == 20.0
+                && medicSimulation.units()[2].health == 44.0,
+            "Medic releases its formal lowest-health ally skill");
+
+        return runner.failureCount();
+    }
+
     int runBattleEndConditionTests()
     {
         TestRunner runner;
@@ -6195,6 +6434,16 @@ int main()
     }
 
     std::cout << "[PASS] Battle skill flow test suite\n";
+
+    // 此代码块运行五单位正式技能矩阵并传播任一失败。
+    const int day5SkillMatrixFailures = runDay5SkillMatrixTests();
+    assert(day5SkillMatrixFailures == 0);
+    if (day5SkillMatrixFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Day 5 skill matrix test suite\n";
 
     const int battleEndConditionFailures = runBattleEndConditionTests();
     assert(battleEndConditionFailures == 0);
