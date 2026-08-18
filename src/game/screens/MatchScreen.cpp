@@ -1,8 +1,10 @@
 #include "game/screens/MatchScreen.hpp"
 
 #include "game/rendering/MapRenderer.hpp"
+#include "game/rendering/UnitRenderer.hpp"
 
 #include <sstream>
+#include <utility>
 
 namespace autochess::game
 {
@@ -57,6 +59,12 @@ namespace autochess::game
         shopTitle_.setFillColor(sf::Color(235, 238, 248));
         shopTitle_.setPosition(880.0F, 72.0F);
 
+        reserveTitle_.setFont(font_);
+        reserveTitle_.setString(L"备用区");
+        reserveTitle_.setCharacterSize(18);
+        reserveTitle_.setFillColor(sf::Color(220, 225, 238));
+        reserveTitle_.setPosition(20.0F, 590.0F);
+
         message_.setFont(font_);
         message_.setCharacterSize(22);
         message_.setPosition(390.0F, 625.0F);
@@ -65,6 +73,42 @@ namespace autochess::game
     // 此函数把一次选择按钮点击转换为待提交核心命令。
     void MatchScreen::handleEvent(const sf::Event& event)
     {
+        // 此代码块在准备阶段优先处理单位拖拽的按下、移动和释放。
+        if (view_.phase == core::MatchPhase::Preparation)
+        {
+            if (event.type == sf::Event::MouseButtonPressed
+                && event.mouseButton.button == sf::Mouse::Left)
+            {
+                const sf::Vector2f pixel(
+                    static_cast<float>(event.mouseButton.x),
+                    static_cast<float>(event.mouseButton.y));
+                const core::OwnedUnitId unitId = hitTestOwnedUnit(pixel);
+                if (unitId != core::InvalidOwnedUnitId)
+                {
+                    drag_.active = true;
+                    drag_.unitId = unitId;
+                    drag_.mousePosition = pixel;
+                    return;
+                }
+            }
+            if (event.type == sf::Event::MouseMoved && drag_.active)
+            {
+                drag_.mousePosition = sf::Vector2f(
+                    static_cast<float>(event.mouseMove.x),
+                    static_cast<float>(event.mouseMove.y));
+                return;
+            }
+            if (event.type == sf::Event::MouseButtonReleased
+                && event.mouseButton.button == sf::Mouse::Left
+                && drag_.active)
+            {
+                finishBasicDrag(sf::Vector2f(
+                    static_cast<float>(event.mouseButton.x),
+                    static_cast<float>(event.mouseButton.y)));
+                return;
+            }
+        }
+
         // 此代码块让路线调试开关只在已经选定地图时可用。
         if (routeToggleButton_ != nullptr
             && routeToggleButton_->handleEvent(event))
@@ -141,6 +185,7 @@ namespace autochess::game
             {
                 refreshButton_->draw(target);
             }
+            drawPreparationUnits(target);
         }
 
         target.draw(title_);
@@ -403,6 +448,216 @@ namespace autochess::game
             }
         }
         return fromUtf8(unitId);
+    }
+
+    // 此函数在棋盘下方为八个正式备用槽分配等宽矩形。
+    sf::FloatRect MatchScreen::reserveSlotBounds(const std::size_t slot) noexcept
+    {
+        return sf::FloatRect(
+            20.0F + 105.0F * static_cast<float>(slot),
+            610.0F,
+            98.0F,
+            88.0F);
+    }
+
+    // 此函数先检测备用槽，再检测己方部署格中的活动单位。
+    core::OwnedUnitId MatchScreen::hitTestOwnedUnit(
+        const sf::Vector2f pixel) const noexcept
+    {
+        // 此代码块在玩家快照不存在时拒绝开始拖拽。
+        if (!view_.self.has_value())
+        {
+            return core::InvalidOwnedUnitId;
+        }
+
+        const core::PlayerState& player = view_.self.value();
+        // 此代码块按照备用槽视觉顺序查找命中的己方单位。
+        for (std::size_t slot = 0; slot < player.reserveSlots.size(); ++slot)
+        {
+            if (player.reserveSlots[slot].has_value()
+                && reserveSlotBounds(slot).contains(pixel))
+            {
+                return player.reserveSlots[slot].value();
+            }
+        }
+
+        // 此代码块按照部署映射顺序查找鼠标所在己方单位格。
+        for (const auto& deployment : player.deployments)
+        {
+            if (boardTransform_.cellBounds(deployment.first).contains(pixel))
+            {
+                return deployment.second;
+            }
+        }
+        return core::InvalidOwnedUnitId;
+    }
+
+    // 此函数把拖拽释放转换为地图部署、备用槽移动或本地失败提示。
+    void MatchScreen::finishBasicDrag(const sf::Vector2f pixel)
+    {
+        const core::OwnedUnitId unitId = drag_.unitId;
+        drag_ = DragState{};
+
+        // 此代码块优先把棋盘内释放转换为部署命令并让核心验证格子是否合法。
+        if (const std::optional<core::GridPosition> grid =
+                boardTransform_.pixelToGrid(pixel))
+        {
+            pendingAction_.kind = UiActionKind::SubmitCommand;
+            pendingAction_.command = core::GameCommand{
+                core::MapSide::A,
+                core::MoveToDeploymentCommand{unitId, grid.value()}};
+            return;
+        }
+
+        // 此代码块把备用区内释放转换为指定槽位的返回命令。
+        if (view_.self.has_value())
+        {
+            for (std::size_t slot = 0;
+                 slot < view_.self->reserveSlots.size();
+                 ++slot)
+            {
+                if (reserveSlotBounds(slot).contains(pixel))
+                {
+                    pendingAction_.kind = UiActionKind::SubmitCommand;
+                    pendingAction_.command = core::GameCommand{
+                        core::MapSide::A,
+                        core::MoveToReserveCommand{unitId, slot}};
+                    return;
+                }
+            }
+        }
+
+        showLocalMessage(L"请拖到地图部署格或备用槽", false);
+    }
+
+    // 此函数线性查找最多八个己方活动单位并返回稳定快照地址。
+    const core::OwnedUnit* MatchScreen::findActiveUnit(
+        const core::OwnedUnitId unitId) const noexcept
+    {
+        // 此代码块在玩家快照不存在时返回空指针。
+        if (!view_.self.has_value())
+        {
+            return nullptr;
+        }
+        for (const core::OwnedUnit& unit : view_.self->activeUnits)
+        {
+            if (unit.id == unitId)
+            {
+                return &unit;
+            }
+        }
+        return nullptr;
+    }
+
+    // 此函数绘制备用槽、双方部署单位以及当前拖拽跟随标记。
+    void MatchScreen::drawPreparationUnits(sf::RenderTarget& target) const
+    {
+        // 此代码块在玩家快照缺失时不绘制任何准备单位内容。
+        if (!view_.self.has_value())
+        {
+            return;
+        }
+
+        target.draw(reserveTitle_);
+        const core::PlayerState& player = view_.self.value();
+        // 此代码块绘制每个备用槽及其中未被拖拽的单位。
+        for (std::size_t slot = 0; slot < player.reserveSlots.size(); ++slot)
+        {
+            const sf::FloatRect bounds = reserveSlotBounds(slot);
+            sf::RectangleShape slotShape(
+                sf::Vector2f(bounds.width, bounds.height));
+            slotShape.setPosition(bounds.left, bounds.top);
+            slotShape.setFillColor(sf::Color(42, 47, 60));
+            slotShape.setOutlineThickness(2.0F);
+            slotShape.setOutlineColor(sf::Color(105, 115, 140));
+            target.draw(slotShape);
+
+            if (!player.reserveSlots[slot].has_value()
+                || player.reserveSlots[slot].value() == drag_.unitId)
+            {
+                continue;
+            }
+            const core::OwnedUnit* unit = findActiveUnit(
+                player.reserveSlots[slot].value());
+            if (unit != nullptr)
+            {
+                UnitRenderer::draw(
+                    target,
+                    font_,
+                    unitName(unit->identity.unitId),
+                    unit->identity,
+                    core::MapSide::A,
+                    bounds);
+            }
+        }
+
+        // 此代码块绘制己方部署单位并在拖拽时隐藏原位置。
+        for (const auto& deployment : player.deployments)
+        {
+            if (deployment.second == drag_.unitId)
+            {
+                continue;
+            }
+            const core::OwnedUnit* unit = findActiveUnit(deployment.second);
+            if (unit != nullptr)
+            {
+                UnitRenderer::draw(
+                    target,
+                    font_,
+                    unitName(unit->identity.unitId),
+                    unit->identity,
+                    core::MapSide::A,
+                    boardTransform_.cellBounds(deployment.first));
+            }
+        }
+
+        // 此代码块绘制只公开身份和位置的电脑部署单位。
+        for (const core::PublicDeployedUnitView& unit
+             : view_.opponent.deployments)
+        {
+            UnitRenderer::draw(
+                target,
+                font_,
+                unitName(unit.identity.unitId),
+                unit.identity,
+                core::MapSide::B,
+                boardTransform_.cellBounds(unit.position));
+        }
+
+        // 此代码块在拖拽期间绘制跟随鼠标的半透明单位标记。
+        if (drag_.active)
+        {
+            const core::OwnedUnit* unit = findActiveUnit(drag_.unitId);
+            if (unit != nullptr)
+            {
+                const sf::FloatRect ghostBounds(
+                    drag_.mousePosition.x - 48.0F,
+                    drag_.mousePosition.y - 40.0F,
+                    96.0F,
+                    80.0F);
+                UnitRenderer::draw(
+                    target,
+                    font_,
+                    unitName(unit->identity.unitId),
+                    unit->identity,
+                    core::MapSide::A,
+                    ghostBounds,
+                    180);
+            }
+        }
+    }
+
+    // 此函数显示界面层成功或失败消息并重置三秒计时。
+    void MatchScreen::showLocalMessage(
+        const sf::String& text,
+        const bool success)
+    {
+        message_.setString(text);
+        message_.setFillColor(
+            success
+                ? sf::Color(100, 215, 135)
+                : sf::Color(240, 105, 105));
+        messageClock_.restart();
     }
 
     // 此函数只根据当前阶段构造一条 A 方地图、分队或策略命令。

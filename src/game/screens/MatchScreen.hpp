@@ -47,6 +47,13 @@ namespace autochess::game
             std::size_t slot = 0;
         };
 
+        struct DragState
+        {
+            bool active = false;
+            core::OwnedUnitId unitId = core::InvalidOwnedUnitId;
+            sf::Vector2f mousePosition;
+        };
+
         // 此函数为当前核心阶段重建标题、说明和全部选项按钮。
         void rebuildChoices();
 
@@ -59,6 +66,25 @@ namespace autochess::game
         // 此函数按单位 ID 查询配置中的中文名称并保留 ID 回退。
         sf::String unitName(const std::string& unitId) const;
 
+        // 此函数返回指定备用槽的固定像素矩形。
+        static sf::FloatRect reserveSlotBounds(std::size_t slot) noexcept;
+
+        // 此函数在鼠标按下位置查找己方可拖拽活动单位。
+        core::OwnedUnitId hitTestOwnedUnit(sf::Vector2f pixel) const noexcept;
+
+        // 此函数根据鼠标释放区域生成部署或回备用区命令。
+        void finishBasicDrag(sf::Vector2f pixel);
+
+        // 此函数按 ID 查找只读快照中的己方活动单位。
+        const core::OwnedUnit* findActiveUnit(
+            core::OwnedUnitId unitId) const noexcept;
+
+        // 此函数绘制备用槽、己方/敌方部署单位和拖拽跟随标记。
+        void drawPreparationUnits(sf::RenderTarget& target) const;
+
+        // 此函数显示不经过核心的界面层拖拽提示。
+        void showLocalMessage(const sf::String& text, bool success);
+
         const sf::Font& font_;
         const core::ConfigBundle& config_;
         core::ReadOnlyGameView view_;
@@ -67,6 +93,7 @@ namespace autochess::game
         sf::Text hint_;
         sf::Text hud_;
         sf::Text shopTitle_;
+        sf::Text reserveTitle_;
         sf::Text message_;
         std::vector<Choice> choices_;
         std::vector<ShopCard> shopCards_;
@@ -75,6 +102,7 @@ namespace autochess::game
         std::unique_ptr<Button> refreshButton_;
         bool showRoutes_ = false;
         sf::Clock messageClock_;
+        DragState drag_;
         UiAction pendingAction_;
     };
 }
