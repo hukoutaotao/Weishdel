@@ -1,0 +1,192 @@
+**********************************************************************
+** Visual Studio 2026 Developer Command Prompt v18.9.0
+** Copyright (c) 2026 Microsoft Corporation
+**********************************************************************
+[1/2] Building CXX object CMakeFiles\AutoChessTests.dir\tests\TestMain.cpp.obj
+注意: 包含文件:  D:\1\src\core/Core.hpp
+注意: 包含文件:  D:\1\src\core/combat/BattleSimulation.hpp
+注意: 包含文件:   D:\1\src\core/combat/BattleTypes.hpp
+注意: 包含文件:    D:\1\src\core/map/MapTypes.hpp
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\string
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\yvals_core.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vcruntime.h
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\sal.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\concurrencysal.h
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vadefs.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xkeycheck.h
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xstring
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_sanitizer_annotate_container.hpp
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_string_view.hpp
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\iosfwd
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\yvals.h
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_doom_core.hpp
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\crtdbg.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt.h
+注意: 包含文件:           D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vcruntime_new_debug.h
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vcruntime_new.h
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\crtdefs.h
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\use_ansi.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cstdio
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\stdio.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wstdio.h
+注意: 包含文件:            D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_stdio_config.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cstring
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\string.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_memory.h
+注意: 包含文件:            D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_memcpy_s.h
+注意: 包含文件:             D:\Windows Kits\10\include\10.0.26100.0\ucrt\errno.h
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vcruntime_string.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wstring.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cwchar
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\wchar.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wconio.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wctype.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wdirect.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wio.h
+注意: 包含文件:            D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_share.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wprocess.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wstdlib.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_wtime.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\sys/stat.h
+注意: 包含文件:            D:\Windows Kits\10\include\10.0.26100.0\ucrt\sys/types.h
+注意: 包含文件:           D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\intrin.h
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\intrin0.inl.h
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\setjmp.h
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\immintrin.h
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\wmmintrin.h
+注意: 包含文件:              D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\nmmintrin.h
+注意: 包含文件:               D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\smmintrin.h
+注意: 包含文件:                D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\tmmintrin.h
+注意: 包含文件:                 D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\pmmintrin.h
+注意: 包含文件:                  D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\emmintrin.h
+注意: 包含文件:                   D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xmmintrin.h
+注意: 包含文件:                    D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\mmintrin.h
+注意: 包含文件:                    D:\Windows Kits\10\include\10.0.26100.0\ucrt\malloc.h
+注意: 包含文件:                     D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_malloc.h
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\zmmintrin.h
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\ammintrin.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xtr1common
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xutility
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_iter_core.hpp
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\utility
+注意: 包含文件:           D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\initializer_list
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cstddef
+注意: 包含文件:             D:\Windows Kits\10\include\10.0.26100.0\ucrt\stddef.h
+注意: 包含文件:           D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\type_traits
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cstdint
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\stdint.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\climits
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\limits.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cstdlib
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\math.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_math.h
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\stdlib.h
+注意: 包含文件:           D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_search.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xmemory
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\limits
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cfloat
+注意: 包含文件:          D:\Windows Kits\10\include\10.0.26100.0\ucrt\float.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\intrin0.h
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\new
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\exception
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vcruntime_exception.h
+注意: 包含文件:           D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\eh.h
+注意: 包含文件:            D:\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_terminate.h
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xatomic.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xpolymorphic_allocator.h
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\tuple
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cctype
+注意: 包含文件:       D:\Windows Kits\10\include\10.0.26100.0\ucrt\ctype.h
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vector
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_bit_utils.hpp
+注意: 包含文件:    D:\1\src\core/model/Definitions.hpp
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\array
+注意: 包含文件:    D:\1\src\core/model/PlayerTypes.hpp
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\map
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xtree
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xnode_handle.h
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\optional
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xsmf_control.h
+注意: 包含文件:  D:\1\src\core/combat/BattleSetupService.hpp
+注意: 包含文件:  D:\1\src\core/combat/BattleStatResolver.hpp
+注意: 包含文件:  D:\1\src\core/combat/CombatRules.hpp
+注意: 包含文件:  D:\1\src\core/combat/TargetSelector.hpp
+注意: 包含文件:  D:\1\src\core/config/ConfigBundleLoader.hpp
+注意: 包含文件:   D:\1\src\core/config/ConfigError.hpp
+注意: 包含文件:    D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\filesystem
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\algorithm
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_heap_algorithms.hpp
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_int128.hpp
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_minmax.hpp
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\chrono
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_chrono.hpp
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\ctime
+注意: 包含文件:        D:\Windows Kits\10\include\10.0.26100.0\ucrt\time.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\ratio
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xtimec.h
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\system_error
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_system_error_abi.hpp
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cerrno
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\stdexcept
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xcall_once.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xerrc.h
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\atomic
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xthreads.h
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_threads_core.hpp
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xfilesystem_abi.h
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\iomanip
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\istream
+注意: 包含文件:       D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_ostream.hpp
+注意: 包含文件:        D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\ios
+注意: 包含文件:         D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xlocnum
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cmath
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\iterator
+注意: 包含文件:          D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\streambuf
+注意: 包含文件:           D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xiosbase
+注意: 包含文件:            D:\Windows Kits\10\include\10.0.26100.0\ucrt\share.h
+注意: 包含文件:            D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xlocale
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\memory
+注意: 包含文件:              D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\typeinfo
+注意: 包含文件:               D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\vcruntime_typeinfo.h
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xfacet
+注意: 包含文件:             D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xlocinfo
+注意: 包含文件:              D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\__msvc_xlocinfo_types.hpp
+注意: 包含文件:              D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\clocale
+注意: 包含文件:               D:\Windows Kits\10\include\10.0.26100.0\ucrt\locale.h
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xlocmon
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xloctime
+注意: 包含文件:     D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\locale
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xlocbuf
+注意: 包含文件:      D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xlocmes
+注意: 包含文件:  D:\1\src\core/config/DefinitionConfigLoader.hpp
+注意: 包含文件:  D:\1\src\core/config/GameConfigLoader.hpp
+注意: 包含文件:  D:\1\src\core/config/MapConfigLoader.hpp
+注意: 包含文件:  D:\1\src\core/config/ConfigParser.hpp
+注意: 包含文件:  D:\1\src\core/economy/DeploymentService.hpp
+注意: 包含文件:   D:\1\src\core/economy/EconomyTypes.hpp
+注意: 包含文件:  D:\1\src\core/economy/MergeService.hpp
+注意: 包含文件:  D:\1\src\core/economy/PriceRules.hpp
+注意: 包含文件:  D:\1\src\core/economy/RosterService.hpp
+注意: 包含文件:  D:\1\src\core/economy/ShopService.hpp
+注意: 包含文件:   D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\random
+注意: 包含文件:    D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\xbit_ops.h
+注意: 包含文件:  D:\1\src\core/match/GameCommand.hpp
+注意: 包含文件:   D:\1\src\core/match/MatchTypes.hpp
+注意: 包含文件:   D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\variant
+注意: 包含文件:  D:\1\src\core/match/Match.hpp
+注意: 包含文件:   D:\1\src\core/match/ReadOnlyGameView.hpp
+注意: 包含文件:  D:\1\src\core/match/RoundController.hpp
+注意: 包含文件:  D:\1\src\core/model/PlayerStateService.hpp
+注意: 包含文件:  D:\1\src\core/skills/Skill.hpp
+注意: 包含文件:  D:\1\src\core/skills/SkillSystem.hpp
+注意: 包含文件:  D:\1\src\core/units/Unit.hpp
+注意: 包含文件:  D:\1\tests\MatchScriptedTests.hpp
+注意: 包含文件:  D:\1\tests\MatchAcceptanceTests.hpp
+注意: 包含文件:  D:\1\tests\AiTests.hpp
+注意: 包含文件:  D:\1\tests\AiIntegrationTests.hpp
+注意: 包含文件:  D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\cassert
+注意: 包含文件:   D:\Windows Kits\10\include\10.0.26100.0\ucrt\assert.h
+注意: 包含文件:  D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\iostream
+注意: 包含文件:   D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\ostream
+注意: 包含文件:  D:\VisualStudio2026\Community\VC\Tools\MSVC\14.51.36231\include\sstream
+[2/2] Linking CXX executable AutoChessTests.exe

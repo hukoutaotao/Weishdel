@@ -6311,6 +6311,25 @@ namespace
         secondTarget.ownedUnitId = 30;
         secondTarget.position = {2.5, 1.5};
 
+        // 此代码块验证两个敌人在同一帧进入范围时优先选择编号较小者。
+        auto tieAttacker = attacker;
+        auto tieHigherId = secondTarget;
+        tieHigherId.id = 3;
+        auto tieLowerId = tieHigherId;
+        tieLowerId.id = 2;
+        const std::vector<autochess::core::BattleUnit> tieUnits = {
+            tieHigherId,
+            tieLowerId,
+            tieAttacker};
+        autochess::core::TargetSelector::update(tieAttacker, tieUnits, 4);
+        runner.check(
+            tieAttacker.targetId.has_value()
+                && tieAttacker.targetId.value() == 2
+                && tieAttacker.firstInRangeFrame.size() == 2
+                && tieAttacker.firstInRangeFrame.at(2) == 4
+                && tieAttacker.firstInRangeFrame.at(3) == 4,
+            "Target selector breaks same-frame ties by lower ID");
+
         std::vector<autochess::core::BattleUnit> units = {
             attacker,
             firstTarget,
