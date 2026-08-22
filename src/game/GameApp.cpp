@@ -12,6 +12,7 @@
 #include <array>
 #include <filesystem>
 #include <iostream>
+#include <utility>
 
 namespace autochess::game
 {
@@ -24,8 +25,9 @@ namespace autochess::game
     }
 
     // 此构造函数创建固定尺寸窗口并限制空闲渲染帧率。
-    GameApp::GameApp()
-        : window_(
+    GameApp::GameApp(std::filesystem::path dataDirectory)
+        : dataDirectory_(std::move(dataDirectory)),
+          window_(
               sf::VideoMode(WindowWidth, WindowHeight),
               "AutoChess")
     {
@@ -70,12 +72,12 @@ namespace autochess::game
         return 0;
     }
 
-    // 此函数加载 CMake 提供的正式数据目录并输出带路径和行号的错误。
+    // 此函数加载入口选定的数据目录并输出带路径和行号的错误。
     bool GameApp::loadConfiguration()
     {
         core::ConfigError error;
         const bool loaded = core::ConfigBundleLoader::load(
-            std::filesystem::path(AUTOCHESS_DATA_DIR),
+            dataDirectory_,
             config_,
             error);
         // 此代码块在配置失败时输出能够直接定位文件的诊断信息。

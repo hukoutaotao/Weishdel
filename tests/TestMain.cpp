@@ -32,6 +32,7 @@
 #include "MatchAcceptanceTests.hpp"
 #include "AiTests.hpp"
 #include "AiIntegrationTests.hpp"
+#include "RuntimePathsTests.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -7133,6 +7134,15 @@ int main()
 
     std::cout << "[PASS] AutoChessCore sanity check\n";
 
+    // 此代码块先验证发布资源路径规则并传播任一失败。
+    const int runtimePathFailures = runRuntimePathTests();
+    assert(runtimePathFailures == 0);
+    if (runtimePathFailures != 0)
+    {
+        return 1;
+    }
+
+    std::cout << "[PASS] Runtime path test suite\n";
     const bool typesPassed = runCoreTypesSmokeTest();
 
     assert(typesPassed);

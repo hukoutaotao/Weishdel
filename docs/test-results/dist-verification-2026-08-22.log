@@ -1,0 +1,66 @@
+第10天 10.6 独立发布目录验证记录
+日期：2026-08-22
+构建配置：MSVC x64 Release，SFML 2.6.2
+
+[一、实现边界]
+- 新增 RuntimePaths 工具，通过 Windows 模块路径取得 EXE 所在目录。
+- 资源目录选择规则：EXE 旁存在 data 目录时固定使用该目录；仅当旁置 data 目录不存在时回退到 CMake 提供的开发数据目录。
+- GameApp 改为接收入口已选定的数据目录，不修改配置解析、玩法或界面逻辑。
+- CMake 构建后把正式 data 复制到 AutoChessGame.exe 旁。
+- 新增 AutoChessDist 目标，使用 CMake 内置命令组装 dist，不引入第三方库。
+
+[二、Release 构建与自动测试]
+- 构建命令目标：AutoChessTests、AutoChessDist。
+- CMake 重新生成成功，Ninja/MSVC 构建退出码：0。
+- Release 自动测试退出码：0。
+- 测试统计：402 PASS / 0 FAIL。
+- 新增路径断言全部通过：
+  1. 能够取得现有可执行文件目录。
+  2. 能够创建隔离测试目录。
+  3. 程序旁 data 优先于开发数据目录。
+  4. 程序旁 data 不存在时回退到开发数据目录。
+  5. 测试临时目录成功清理。
+- 临时测试日志：build/qa-temp/release-tests-10.6.log。
+
+[三、dist 精确清单]
+文件总数：10；缺失文件：0；意外文件：0。
+
+AutoChessGame.exe
+sfml-graphics-2.dll
+sfml-system-2.dll
+sfml-window-2.dll
+data/factions.cfg
+data/game.cfg
+data/skills.cfg
+data/units.cfg
+data/maps/map_01.map
+data/maps/map_02.map
+
+- 6 个 dist 数据文件与源码 data 对应文件的 SHA-256 全部一致。
+- dist 不包含测试程序、静态库、编译缓存、调试符号或源代码。
+
+[四、项目外独立启动]
+- 外部验证目录：D:\AutoChess-dist-10.6-bee38c877fd047a89016f740469ce9c7
+- 启动工作目录：D:\
+- 外部目录不位于项目 D:\1 或 build 目录中。
+- 程序成功创建窗口，标题：AutoChess。
+- 关闭前进程仍存活。
+- 接收关闭消息后正常结束，退出码：0。
+- 标准输出：空；标准错误：空。
+
+[五、旁置 data 证明]
+- 在外部副本中临时删除 data/game.cfg，再从工作目录 D:\ 启动同一 EXE。
+- 程序退出码：1。
+- 诊断：[CONFIG] D:\AutoChess-dist-10.6-bee38c877fd047a89016f740469ce9c7\data\game.cfg 无法打开配置文件
+- 诊断明确指向 EXE 旁的外部 data，而不是编译期 D:\1\data。
+- 故障检查后已从正式 dist 恢复外部副本的 game.cfg。
+- 验收记录完成后已清理项目外临时副本，正式 dist 保持完整。
+
+[六、自检结论]
+- Release 可编译：通过。
+- 完整自动测试：通过。
+- dist 文件清单：通过。
+- 数据哈希一致性：通过。
+- 项目外启动与正常关闭：通过。
+- EXE 旁 data 优先规则：通过。
+- 未引入新第三方库，未增加玩法，未做无关重构。

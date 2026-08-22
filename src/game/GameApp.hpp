@@ -11,6 +11,7 @@
 #include <SFML/System/Clock.hpp>
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 
 namespace autochess::game
@@ -19,7 +20,7 @@ namespace autochess::game
     class GameApp
     {
     public:
-        GameApp();
+        explicit GameApp(std::filesystem::path dataDirectory);
 
         // 此函数完成启动检查并运行窗口主循环，失败时返回非零退出码。
         int run();
@@ -64,6 +65,8 @@ namespace autochess::game
         // 此函数清除离开对局页面后不应继续更新的核心对象。
         void clearMatchState() noexcept;
 
+        // 此成员保存入口已经按发布优先级选定的正式数据目录。
+        std::filesystem::path dataDirectory_;
         sf::RenderWindow window_;
         sf::Font font_;
         core::ConfigBundle config_;

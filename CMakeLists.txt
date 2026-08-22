@@ -132,6 +132,9 @@ add_executable(
     # 将第七天窗口、资源和固定步长运行骨架编译进游戏目标。
     src/game/GameApp.cpp
     src/game/GameApp.hpp
+    # 将可执行文件目录和发布数据路径选择工具编译进游戏目标。
+    src/game/RuntimePaths.cpp
+    src/game/RuntimePaths.hpp
     # 将真人命令队列编译进表现层游戏目标。
     src/game/controllers/HumanController.cpp
     src/game/controllers/HumanController.hpp
@@ -195,12 +198,48 @@ add_custom_command(
         "$<TARGET_FILE:sfml-system>"
         "$<TARGET_FILE_DIR:AutoChessGame>"
 
+    # 此命令把正式配置和地图复制到程序旁，确保构建产物也验证发布路径。
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/data"
+        "$<TARGET_FILE_DIR:AutoChessGame>/data"
+
+    VERBATIM
+)
+
+# 此目标从已验证的 Release 产物组装可直接启动的独立提交目录。
+set(AUTOCHESS_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+add_custom_target(
+    AutoChessDist
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${AUTOCHESS_DIST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${AUTOCHESS_DIST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:AutoChessGame>"
+        "${AUTOCHESS_DIST_DIR}/AutoChessGame.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:sfml-graphics>"
+        "${AUTOCHESS_DIST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:sfml-window>"
+        "${AUTOCHESS_DIST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:sfml-system>"
+        "${AUTOCHESS_DIST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/data"
+        "${AUTOCHESS_DIST_DIR}/data"
+    DEPENDS AutoChessGame
+    COMMENT "Assembling standalone AutoChess dist directory"
     VERBATIM
 )
 
 add_executable(
     AutoChessTests
     tests/TestMain.cpp
+    # 将发布资源路径选择测试和无 SFML 路径工具编译进测试目标。
+    tests/RuntimePathsTests.cpp
+    tests/RuntimePathsTests.hpp
+    src/game/RuntimePaths.cpp
+    src/game/RuntimePaths.hpp
     # 将第九天 AI 控制器与三种策略差异测试编译进测试目标。
     tests/AiTests.cpp
     tests/AiTests.hpp
