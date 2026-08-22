@@ -20,7 +20,7 @@
 | `screenshots/02-help.png` | `build/qa-temp/autochess-10.5-accepted/02-help.png` | 帮助页 | `061349E79F65449AD9475065BD7D32F377059AFC7EB0CCC0AE72F9C08E8674CD` |
 | `screenshots/03-map-selection.png` | `build/qa-temp/autochess-10.5-accepted/04-map-selection.png` | 地图选择 | `14E264A5A992608ED57B711DB6F0D68DA97F449CE82A908CF606C315A8C76CB7` |
 | `screenshots/04-faction-selection.png` | `build/qa-temp/autochess-10.5-accepted/05-faction-selection.png` | 分队选择 | `0440C4EFBA666D2697823F3F9144C20E52E5D02B3A583CCDE6B8D9AA31EF0800` |
-| `screenshots/05-ai-selection.png` | `build/qa-temp/autochess-10.5-accepted/06-ai-selection.png` | AI 策略选择 | `4E886E9FF3773BB7C82CBDBFC0E664EF691E711BBE7B88D13E51AFA0169CC7C3` |
+| `screenshots/05-ai-selection.png` | `build/qa-temp/autochess-10.9-ai-capture/04-ai-selection.png` | AI 策略选择（最终文案） | `94F418FB9DDB15DF192184E224528F0EBA9F5AA6514983249510B68FACD05939` |
 | `screenshots/06-preparation.png` | `build/qa-temp/autochess-10.5-accepted/07-preparation.png` | 准备阶段 | `3155AC7231D534F13652652C44C5A8E730831E3854089FBD487B30732A4536AF` |
 | `screenshots/07-purchased.png` | `build/qa-temp/autochess-10.5-accepted/08-purchased.png` | 购买单位 | `EC22B4143CAA085585E594198F44E79C8271FA9C63BA840E587388B15A8EBF2B` |
 | `screenshots/08-deployed.png` | `build/qa-temp/autochess-10.5-accepted/09-deployed.png` | 拖拽部署 | `7B998CBFA9D2620E36958115F74C086A052B89E6A6B48FDC22B79A52A6999213` |

@@ -558,7 +558,7 @@ namespace autochess::game
         else if (view_.phase == core::MatchPhase::AiSelection)
         {
             title_.setString(L"选择电脑策略");
-            hint_.setString(L"第 9 天将接入完整策略；今天先验证合法对局流程");
+            hint_.setString(L"请选择电脑的决策风格：进攻、防守或路线");
             for (std::size_t index = 0; index < view_.aiStrategies.size(); ++index)
             {
                 Choice choice;
