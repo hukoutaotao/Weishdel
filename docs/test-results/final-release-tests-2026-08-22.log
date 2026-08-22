@@ -1,0 +1,454 @@
+第10天最终 Release 自动测试原始记录
+日期：2026-08-22
+执行时间：2026-08-22 18:32:47 +08:00
+候选提交：967915dc8b7f0399046fb04c8a1d9dacbf38c935
+测试程序：build/msvc-release/AutoChessTests.exe
+退出码：0
+PASS：402
+FAIL：0
+AI MATRIX：18
+标准错误：空
+
+[原始标准输出]
+[PASS] AutoChessCore sanity check
+[PASS] runtime path finds executable directory
+[PASS] runtime path test directories are created
+[PASS] runtime path prefers adjacent data directory
+[PASS] runtime path falls back to development data directory
+[PASS] runtime path test directory is removed
+[PASS] Runtime path test suite
+[PASS] AutoChessCore data types smoke test
+[PASS] Player state data types smoke test
+[PASS] Economy data types smoke test
+[PASS] Match data types smoke test
+[PASS] Round preparation loads formal configuration
+[PASS] Round preparation finds both formal factions
+[PASS] Round preparation grants first-round income and six offers
+[PASS] Round preparation grants loser bonus only to side A
+[PASS] Round preparation replaces previous shop offers
+[PASS] Round preparation rejects invalid income atomically
+[PASS] Round preparation test suite
+[PASS] Round settlement applies guard damage and records loser
+[PASS] Round settlement moves dead and surviving side A units
+[PASS] Round settlement returns reached and timeout survivors by ID
+[PASS] Round settlement rejects inconsistent summaries atomically
+[PASS] Match result detects side A guard depletion
+[PASS] Match result detects simultaneous guard depletion
+[PASS] Match result compares guards after maximum rounds
+[PASS] Match result draws equal guards after maximum rounds
+[PASS] Match result remains ongoing before maximum rounds
+[PASS] Round settlement test suite
+[PASS] Match selection loads formal configuration
+[PASS] Match starts in map selection without players
+[PASS] Match rejects faction selection before map
+[PASS] Match rejects an unknown map atomically
+[PASS] Match advances from map to faction selection
+[PASS] Match rejects side B selecting the player faction
+[PASS] Match advances from faction to AI selection
+[PASS] Match waits for an AI strategy before side B faction
+[PASS] Match rejects the unknown AI strategy
+[PASS] Match records AI strategy before side B faction
+[PASS] Match creates both players and first preparation atomically
+[PASS] Match rejects repeated map selection after preparation
+[PASS] Match selection test suite
+[PASS] Match preparation commands load formal configuration
+[PASS] Match preparation reaches first round
+[PASS] Read-only view exposes self data and public opponent data
+[PASS] Read-only view mutations cannot change Match state
+[PASS] Match dispatches purchases and merge through one entry
+[PASS] Match dispatches deployment and publishes opponent placement
+[PASS] Match rejects commands targeting an opponent unit
+[PASS] Match dispatches reserve, revive validation, and sell commands
+[PASS] Match dispatches refresh and rejects an unknown actor
+[PASS] Match preparation command test suite
+[PASS] Match round flow loads formal configuration
+[PASS] Match round flow starts a sixty-frame preparation
+[PASS] Match round flow purchases and deploys both sides
+[PASS] Match permits only side A to start a ready battle
+[PASS] Read-only combat timer decreases by one fixed frame
+[PASS] Match enforces combat command phase, ownership, and mana
+[PASS] Match exposes settlement before persistent state writeback
+[PASS] Settlement view exposes final battle summary and zero timer
+[PASS] Match settles round one and initializes round two
+[PASS] Match decrements preparation by exactly one frame
+[PASS] Match automatically starts combat when countdown reaches zero
+[PASS] Match resolves an empty deployment battle deterministically
+[PASS] Match ends at maximum rounds and becomes idempotent
+[PASS] Match round flow test suite
+[PASS] Scripted match loads formal configuration
+[ROUND 1] damage_to_A=0 damage_to_B=0 guard_A=100 guard_B=100 loser=none
+[ROUND 2] damage_to_A=0 damage_to_B=0 guard_A=100 guard_B=100 loser=none
+[ROUND 3] damage_to_A=0 damage_to_B=0 guard_A=100 guard_B=100 loser=none
+[MATCH] outcome=draw rounds=3 guard_A=100 guard_B=100
+[PASS] Scripted controllers submit only legal commands
+[PASS] Scripted match finishes before the frame guard
+[PASS] Scripted match completes exactly three rounds
+[PASS] Scripted match prints one summary for every round
+[PASS] Scripted match test suite
+[PASS] AI tests load formal configuration
+[PASS] AI strategies expose stable kinds and default factions
+[PASS] AI returns no command for an empty snapshot
+[PASS] AI controller selects each default faction as side B
+[PASS] AI controller validates forced faction and controller side
+[PASS] AI strategies choose distinct purchases from the same offers
+[PASS] AI strategies apply their route priorities deterministically
+[PASS] AI strategies choose distinct ready skills
+[PASS] AI skill checks enforce target mana and own-side conditions
+[PASS] AI strategies never release an opponent skill
+[PASS] AI controller forwards only an owned non-start command
+[PASS] AI strategy test suite
+[PASS] AI integration matrix loads formal configuration
+[AI MATRIX] strategy=offensive map=map_01 faction=training_team frames=363 ai_commands=9 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration offensive map_01 training_team
+[AI MATRIX] strategy=offensive map=map_01 faction=assault_team frames=363 ai_commands=9 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration offensive map_01 assault_team
+[AI MATRIX] strategy=offensive map=map_01 faction=route_team frames=363 ai_commands=9 command_failures=0 outcome=A_win rounds=3
+[PASS] AI integration offensive map_01 route_team
+[AI MATRIX] strategy=offensive map=map_02 faction=training_team frames=363 ai_commands=13 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration offensive map_02 training_team
+[AI MATRIX] strategy=offensive map=map_02 faction=assault_team frames=363 ai_commands=13 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration offensive map_02 assault_team
+[AI MATRIX] strategy=offensive map=map_02 faction=route_team frames=363 ai_commands=13 command_failures=0 outcome=A_win rounds=3
+[PASS] AI integration offensive map_02 route_team
+[AI MATRIX] strategy=defensive map=map_01 faction=training_team frames=363 ai_commands=9 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration defensive map_01 training_team
+[AI MATRIX] strategy=defensive map=map_01 faction=assault_team frames=363 ai_commands=9 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration defensive map_01 assault_team
+[AI MATRIX] strategy=defensive map=map_01 faction=route_team frames=363 ai_commands=9 command_failures=0 outcome=A_win rounds=3
+[PASS] AI integration defensive map_01 route_team
+[AI MATRIX] strategy=defensive map=map_02 faction=training_team frames=363 ai_commands=13 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration defensive map_02 training_team
+[AI MATRIX] strategy=defensive map=map_02 faction=assault_team frames=363 ai_commands=13 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration defensive map_02 assault_team
+[AI MATRIX] strategy=defensive map=map_02 faction=route_team frames=363 ai_commands=13 command_failures=0 outcome=A_win rounds=3
+[PASS] AI integration defensive map_02 route_team
+[AI MATRIX] strategy=route map=map_01 faction=training_team frames=363 ai_commands=9 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration route map_01 training_team
+[AI MATRIX] strategy=route map=map_01 faction=assault_team frames=363 ai_commands=9 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration route map_01 assault_team
+[AI MATRIX] strategy=route map=map_01 faction=route_team frames=363 ai_commands=9 command_failures=0 outcome=A_win rounds=3
+[PASS] AI integration route map_01 route_team
+[AI MATRIX] strategy=route map=map_02 faction=training_team frames=363 ai_commands=13 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration route map_02 training_team
+[AI MATRIX] strategy=route map=map_02 faction=assault_team frames=363 ai_commands=13 command_failures=0 outcome=draw rounds=3
+[PASS] AI integration route map_02 assault_team
+[AI MATRIX] strategy=route map=map_02 faction=route_team frames=363 ai_commands=13 command_failures=0 outcome=A_win rounds=3
+[PASS] AI integration route map_02 route_team
+[PASS] AI integration matrix executes exactly eighteen scenarios
+[PASS] AI integration test suite
+[PASS] Match acceptance loads formal configuration
+[PASS] Acceptance matrix finds both factions
+[PASS] Acceptance matrix grants loser bonus only to side B
+[PASS] Acceptance matrix grants no bonus after a tied round
+[PASS] Acceptance matrix awards B when A guard reaches zero
+[PASS] Acceptance matrix awards A when B guard reaches zero
+[PASS] Acceptance matrix draws simultaneous guard depletion
+[PASS] Acceptance matrix waits then awards higher side A guard
+[PASS] Acceptance matrix awards higher side B guard at round three
+[PASS] Acceptance matrix draws equal guards at round three
+[PASS] Acceptance matrix batches double zero and keeps raw-damage loser
+[PASS] Acceptance matrix reaches preparation
+[PASS] Acceptance matrix keeps preparation state after illegal commands
+[PASS] Acceptance matrix keeps ownership state after cross-side command
+[PASS] Acceptance matrix keeps combat state after invalid commands
+[PASS] Match acceptance test suite
+[PASS] PriceRules calculates the unmodified base price
+[PASS] PriceRules applies the faction price multiplier
+[PASS] PriceRules applies add and multiply price modifiers
+[PASS] PriceRules ignores unrelated modifiers
+[PASS] PriceRules keeps the price independent of owned unit level
+[PASS] PriceRules calculates merge, sell, and revive amounts
+[PASS] PriceRules rounds an exact half upward
+[PASS] PriceRules uses the formal price and economy ratios
+[PASS] PriceRules rejects a non-positive base price
+[PASS] PriceRules rejects a non-positive adjusted price
+[PASS] PriceRules rejects an out-of-range ratio
+[PASS] PriceRules failure does not modify its inputs
+[PASS] Price rules test suite
+[PASS] ShopService rebuilds deterministically with the same seed
+[PASS] ShopService uses the configured slot count and fills every slot
+[PASS] ShopService stores each unit's calculated level-one price
+[PASS] ShopService rebuild replaces every previous offer
+[PASS] ShopService samples an unlimited unit pool with replacement
+[PASS] ShopService refresh replaces offers and deducts the configured cost
+[PASS] ShopService leaves all state unchanged when refresh gold is insufficient
+[PASS] ShopService rejects an empty unit pool without changing state
+[PASS] ShopService rejects invalid prices without changing state
+[PASS] ShopService rejects a mismatched faction without changing state
+[PASS] ShopService rejects a negative refresh cost without changing state
+[PASS] Shop service test suite
+[PASS] ShopService purchase creates a level-one unit in the first reserve slot
+[PASS] ShopService purchase uses the next empty reserve slot and ID
+[PASS] ShopService rejects insufficient purchase gold atomically
+[PASS] ShopService rejects a full roster atomically
+[PASS] ShopService rejects an out-of-range purchase slot
+[PASS] ShopService rejects an empty purchase slot
+[PASS] ShopService rejects an offer with a missing unit definition
+[PASS] ShopService rejects a non-positive displayed price
+[PASS] ShopService rejects an invalid next owned-unit ID
+[PASS] ShopService rejects an already-used owned-unit ID
+[PASS] ShopService rejects an already-invalid player state
+[PASS] Shop purchase test suite
+[PASS] PlayerStateService loads the formal configuration bundle
+[PASS] PlayerStateService finds the training faction
+[PASS] PlayerStateService creates an empty configured player state
+[PASS] PlayerStateService accepts the initial player state
+[PASS] PlayerStateService finds active, dead, and missing units
+[PASS] PlayerStateService finds reserve slots only for reserve units
+[PASS] PlayerStateService finds deployment positions only for deployed units
+[PASS] PlayerStateService finds the first empty reserve slot
+[PASS] PlayerStateService reports no empty slot when reserve is full
+[PASS] PlayerStateService counts active and deployed units
+[PASS] PlayerStateService accepts a consistent mixed player state
+[PASS] PlayerStateService rejects duplicate active IDs
+[PASS] PlayerStateService rejects a unit in reserve and deployment
+[PASS] PlayerStateService rejects an unknown deployment ID
+[PASS] PlayerStateService rejects a dead unit in reserve
+[PASS] PlayerStateService rejects an active unit with wrong owner
+[PASS] PlayerStateService rejects active units over capacity
+[PASS] PlayerStateService rejects an invalid persistent ID
+[PASS] PlayerState service test suite
+[PASS] DeploymentService loads the formal configuration bundle
+[PASS] DeploymentService finds map_01 and the training faction
+[PASS] DeploymentService test player starts in a valid state
+[PASS] DeploymentService deploys a reserve unit to a legal start
+[PASS] DeploymentService moves a deployed unit to an empty start
+[PASS] DeploymentService withdraws a deployed unit to the reserve
+[PASS] DeploymentService moves a reserve unit between reserve slots
+[PASS] DeploymentService rejects the unit's current deployment start
+[PASS] DeploymentService rejects the unit's current reserve slot
+[PASS] DeploymentService rejects a mismatched faction
+[PASS] DeploymentService rejects a negative deployment limit
+[PASS] DeploymentService rejects the opposing deployment start
+[PASS] DeploymentService rejects an ordinary route cell
+[PASS] DeploymentService rejects a guard cell
+[PASS] DeploymentService rejects an obstacle cell
+[PASS] DeploymentService prepares an occupied deployment test
+[PASS] DeploymentService rejects an occupied deployment start
+[PASS] DeploymentService prepares a deployment-limit test
+[PASS] DeploymentService enforces the faction deployment limit
+[PASS] DeploymentService rejects a missing unit ID
+[PASS] DeploymentService rejects an out-of-range reserve slot
+[PASS] DeploymentService rejects an occupied reserve slot
+[PASS] DeploymentService rejects an invalid player state atomically
+[PASS] DeploymentService does not move a dead unit
+[PASS] Deployment service test suite
+[PASS] MergeService loads the formal configuration bundle
+[PASS] MergeService finds the training faction and map_01
+[PASS] MergeService combines two level-one reserve units
+[PASS] MergeService combines two level-two units into level three
+[PASS] MergeService preserves the deployed target position
+[PASS] MergeService preserves the reserve target position
+[PASS] MergeService combines two deployed units at the target start
+[PASS] MergeService rejects merging a unit with itself
+[PASS] MergeService rejects a missing source unit
+[PASS] MergeService rejects a missing target unit
+[PASS] MergeService rejects a dead source unit
+[PASS] MergeService rejects different unit types
+[PASS] MergeService rejects different unit levels
+[PASS] MergeService rejects units at the maximum level
+[PASS] MergeService rejects an invalid maximum level configuration
+[PASS] MergeService rejects a missing unit definition
+[PASS] MergeService rejects a mismatched faction
+[PASS] MergeService rejects an invalid zero next ID
+[PASS] MergeService rejects a next ID used by an active unit
+[PASS] MergeService rejects a next ID used by a dead unit
+[PASS] MergeService rejects the maximum next ID
+[PASS] MergeService rejects an invalid player state atomically
+[PASS] MergeService rejects an invalid merge refund ratio
+[PASS] MergeService rejects an invalid unit price
+[PASS] MergeService rejects a gold overflow atomically
+[PASS] Merge service test suite
+[PASS] RosterService loads the formal configuration bundle
+[PASS] RosterService finds the training faction and unit
+[PASS] RosterService sells a reserve level-one unit for two gold
+[PASS] RosterService sells a deployed level-three unit at level-one value
+[PASS] RosterService permits a zero-ratio sale
+[PASS] RosterService rejects selling a dead unit
+[PASS] RosterService rejects selling a missing unit
+[PASS] RosterService rejects selling a unit without a definition
+[PASS] RosterService rejects a mismatched sale faction
+[PASS] RosterService rejects an invalid sale ratio
+[PASS] RosterService rejects sale gold overflow atomically
+[PASS] RosterService rejects an invalid state before selling
+[PASS] RosterService moves a reserve unit to the dead list
+[PASS] RosterService releases a deployment when a unit dies
+[PASS] RosterService rejects marking an already dead unit
+[PASS] RosterService rejects marking a missing unit dead
+[PASS] RosterService rejects an invalid state before death transfer
+[PASS] RosterService revives a level-two unit with the same ID
+[PASS] RosterService revives into the first empty reserve slot
+[PASS] RosterService rejects revival with insufficient gold
+[PASS] RosterService enforces the active roster limit on revival
+[PASS] RosterService rejects reviving an active unit
+[PASS] RosterService rejects reviving a missing unit
+[PASS] RosterService rejects reviving a unit without a definition
+[PASS] RosterService rejects a mismatched revival faction
+[PASS] RosterService rejects an invalid revival ratio
+[PASS] RosterService permits a zero-cost revival
+[PASS] RosterService rejects an invalid state before revival
+[PASS] RosterService death and revival preserve persistent identity
+[PASS] Roster service test suite
+[PASS] Economy integration loads the formal configuration bundle
+[PASS] Economy integration finds the formal faction, unit, map, and values
+[PASS] Economy integration completes every command with a message
+[PASS] Economy integration keeps every intermediate player state valid
+[PASS] Economy integration rebuilds six formal offers without charging gold
+[PASS] Economy integration purchases IDs one through three into reserve slots
+[PASS] Economy integration merges IDs one and two into level-two ID four
+[PASS] Economy integration deploys level-two ID four to the upper start
+[PASS] Economy integration deploys ID three to the lower start
+[PASS] Economy integration sells deployed ID three for two gold
+[PASS] Economy integration moves deployed ID four to the dead list
+[PASS] Economy integration revives ID four into the first reserve slot
+[PASS] Economy integration refreshes the shop and reaches the expected final state
+[PASS] Economy integration records the exact expected gold sequence
+[PASS] Economy integration rejects an unaffordable purchase atomically
+[PASS] Economy integration rejects an unaffordable refresh atomically
+[PASS] Economy integration rejects the opposing deployment start atomically
+[PASS] Economy integration rejects an occupied deployment start atomically
+[PASS] Economy integration rejects marking a dead unit twice atomically
+[PASS] Economy integration rejects reviving an active unit atomically
+[PASS] Economy integration reproduces the full scenario with one seed
+[INFO] Economy integration:
+initial=10
+after_purchase=7,4,1
+after_merge=2
+after_sell=4
+after_death=4
+after_revive=2
+after_refresh=0
+final_active=1
+final_dead=0
+final_deployed=0
+[PASS] Economy integration scenario test suite
+[PASS] BattleStatResolver receives units and all three factions
+[PASS] BattleStatResolver applies defense faction modifiers once
+[PASS] BattleStatResolver does not accumulate faction modifiers
+[PASS] BattleStatResolver isolates assault and route faction bonuses
+[PASS] BattleStatResolver supports wildcard units and rejects invalid operations
+[PASS] Battle stat resolver test suite
+[PASS] Battle setup loads the formal configuration
+[PASS] Battle setup creates only deployed units
+[PASS] Battle setup preserves identity, route, and grid-center position
+[PASS] Battle setup resolves level-scaled combat attributes
+[PASS] Battle setup rejects missing definitions atomically
+[PASS] Battle setup requires one player for each side
+[PASS] Battle setup service test suite
+[PASS] Combat rules calculate the zero-speed attack interval
+[PASS] Combat rules calculate the maximum-speed attack interval
+[PASS] Combat rules clamp attack speed above 600
+[PASS] Combat rules subtract physical defense
+[PASS] Combat rules enforce five minimum physical damage
+[PASS] Combat rules apply the magic-resistance boundaries
+[PASS] Combat rules use Euclidean distance
+[PASS] Combat rules test suite
+[PASS] Battle movement advances by speed divided by sixty
+[PASS] Battle movement consumes distance across multiple waypoints
+[PASS] Battle movement recovers to the nearest unvisited waypoint
+[PASS] Battle movement stops exactly at the guard endpoint
+[PASS] Battle movement does not enter an obstacle cell
+[PASS] Battle movement test suite
+[PASS] Target selector breaks same-frame ties by lower ID
+[PASS] Target selector records the first frame in range
+[PASS] Target selector prefers the earlier entering target
+[PASS] Target selector clears an out-of-range target and reacquires
+[PASS] Target selector clears dead targets immediately
+[PASS] Target selector heals the lowest-ratio ally with ID tie-break
+[PASS] Target selector test suite
+[PASS] Battle attacks apply physical damage after one interval
+[PASS] Battle attacks resolve simultaneous mutual deaths in one frame
+[PASS] Battle attack test suite
+[PASS] Battle healing restores an ally without exceeding max health
+[PASS] Battle healing permits a healer to heal itself
+[PASS] Battle batches same-frame damage and healing as one net change
+[PASS] Battle healing test suite
+[PASS] Battle fixed steps regenerate exactly one mana per second
+[PASS] Battle release applies configured skill and rejects empty mana
+[PASS] Battle resumes movement, action timing, and mana next frame
+[PASS] Battle skill flow test suite
+[PASS] Day 5 skill matrix finds all formal units and factions
+[PASS] Day 5 skill matrix resolves all faction battle stats
+[PASS] Iron guard buff preserves faction base stats without accumulation
+[PASS] Duelist releases its formal single-target physical skill
+[PASS] Ranger releases its formal multiplicative speed buff
+[PASS] Arcanist releases its formal three-target magic skill
+[PASS] Medic releases its formal lowest-health ally skill
+[PASS] Day 5 skill matrix test suite
+[PASS] Battle batches simultaneous guard arrivals and damage
+[PASS] Battle timeout preserves remaining units and is idempotent
+[PASS] Battle resumes route movement after a target leaves range
+[PASS] Battle end-condition test suite
+[PASS] ConfigParser reads valid sections, fields, IDs, and line numbers
+[PASS] ConfigParser rejects fields before a section
+[PASS] ConfigParser rejects a section without closing bracket
+[PASS] ConfigParser rejects a field without equals sign
+[PASS] ConfigParser rejects duplicate fields
+[PASS] ConfigParser rejects duplicate sections
+[PASS] ConfigParser reports a missing file
+[PASS] ConfigParser test suite
+[PASS] GameConfigLoader loads all fields from valid game.cfg
+[INFO] GameConfig summary: rounds=3, preparation=45s, combat=60s, shop_slots=6, seed=20260814
+[PASS] GameConfigLoader rejects a missing required field
+[PASS] GameConfigLoader rejects an invalid integer
+[PASS] GameConfigLoader rejects an out-of-range ratio
+[PASS] GameConfigLoader rejects an unknown field
+[PASS] GameConfigLoader rejects an overflowing random seed
+[PASS] GameConfigLoader test suite
+[PASS] Definition loaders receive a valid GameConfig dependency
+[PASS] DefinitionConfigLoader loads valid skills, units, factions, and modifiers
+[INFO] Definition summary: skills=5, units=5, factions=3, modifiers=6
+[PASS] Skill loader rejects an unknown effect type
+[PASS] Skill loader rejects an invalid damage-skill duration
+[PASS] Skill loader requires exactly three level values
+[PASS] Unit loader rejects a missing required field
+[PASS] Unit loader rejects magic resistance above 100
+[PASS] Unit loader rejects a missing skill reference
+[PASS] Unit loader rejects a healer without positive healing power
+[PASS] Faction loader rejects deployment above roster capacity
+[PASS] Faction loader rejects a missing faction reference
+[PASS] Faction loader rejects a missing unit reference
+[PASS] DefinitionConfigLoader test suite
+[PASS] Day 5 content loads five units, five skills, and three factions
+[PASS] Day 5 skills cover single damage, multi damage, healing, and buffs
+[PASS] Day 5 units cover the five required roles with independent skills
+[PASS] Day 5 factions represent defense, assault, and route economy roles
+[PASS] Day 5 content configuration test suite
+[PASS] Unit and skill interfaces receive all formal definitions
+[PASS] Five concrete units expose distinct roles and configured skills
+[PASS] Active skill interfaces validate mana and level boundaries
+[PASS] Unit and skill interface test suite
+[PASS] Skill mana regenerates at one per second and stops at maximum
+[PASS] Skill mana pauses while active and after unit death
+[PASS] Skill enemy targets use distance then ID with count and range
+[PASS] Skill healing targets use health ratio, ID, and self policy
+[PASS] Skill self target rule selects only its living caster
+[PASS] Skill system rule test suite
+[PASS] Physical skill uses defense, consumes mana, and marks death
+[PASS] Magic skill damages multiple targets using each resistance
+[PASS] Healing skill restores health without exceeding maximum
+[PASS] Additive buff lasts exact frames and restores base defense
+[PASS] Multiplicative buff derives attack speed from base stats
+[PASS] Skill release failure leaves mana and health unchanged
+[PASS] Skill effect test suite
+[PASS] MapConfigLoader loads map_01 grid and four routes
+[INFO] Map summary: id=map_01, size=11x7, routes=4
+[PASS] MapConfigLoader loads map_02 with varied route lengths
+[INFO] Map summary: id=map_02, size=15x9, routes=6, shortest=12, longest=21
+[PASS] MapConfigLoader reports a missing file without overwriting output
+[PASS] MapConfigLoader rejects a route without points
+[PASS] MapConfigLoader rejects points whose first item differs from start
+[PASS] MapConfigLoader rejects a route starting on the opposing deployment
+[PASS] MapConfigLoader requires one route for every deployment cell
+[PASS] MapConfigLoader rejects multiple routes for one deployment cell
+[PASS] MapConfigLoader rejects an out-of-bounds route point
+[PASS] MapConfigLoader rejects a route through an obstacle
+[PASS] MapConfigLoader rejects a diagonal route segment
+[PASS] MapConfigLoader requires routes to end at the enemy guard
+[PASS] MapConfigLoader test suite
+[PASS] ConfigBundleLoader loads all definitions and two maps in order
+[INFO] Config bundle summary: skills=5, units=5, factions=3, modifiers=6, maps=2
+[INFO] Map map_01: routes=4, shortest=12, longest=12
+[INFO] Map map_02: routes=6, shortest=12, longest=21
+[PASS] ConfigBundleLoader preserves existing output after a load failure
+[PASS] ConfigBundleLoader test suite
