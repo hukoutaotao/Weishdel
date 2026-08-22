@@ -1,0 +1,174 @@
+第10天最终课程报告只读审计
+日期：2026-08-22
+候选提交：69940461c03a75df7dac8ff71a0fdd37577920be
+报告：docs/自走棋对战系统课程设计报告.docx
+
+=== audit_report.py ===
+DOCX_BYTES=2027677
+CHECK_toc_placeholder_absent=True
+CHECK_source_list_heading_present=True
+CHECK_score_table_text_present=True
+CHECK_taskbook_text_present=True
+CHECK_debug_case_cmake_present=True
+CHECK_dist_present=True
+PARAGRAPHS=207
+TABLES=11
+INLINE_SHAPES=18
+USABLE_WIDTH_EMU=5868670
+OVERSIZED_INLINE_SHAPES=0
+DOCX_MEDIA_FILES=18
+DOCX_INLINE_DRAWINGS=18
+DOCX_ANCHORED_DRAWINGS=0
+DOCX_EXPLICIT_PAGE_BREAKS=14
+PDF_PAGES=28
+PAGE_01_TEXT_CHARS=201 SNIP=课 程 设 计 报 告 自走棋对战系统 C++17 + SFML 2.6.2 课程名称 计算机程序设计基础 2 课题名称 自走棋对战系统 班 级 ________________________ 学
+PAGE_02_TEXT_CHARS=1790 SNIP=自走棋对战系统课程设计报告 第 2 页 摘 要 本项目面向《计算机程序设计基础2》课程设计要求，使用 C++17 与 SFML 2.6.2 独立实现一 个可配置、可测试、可发布的自走棋对战系统。系统提
+PAGE_03_TEXT_CHARS=1894 SNIP=自走棋对战系统课程设计报告 第 3 页 3.6 AI 设计 ................................................................. 10 3
+PAGE_04_TEXT_CHARS=1148 SNIP=自走棋对战系统课程设计报告 第 4 页 1 系统需求分析 1.1 设计目的与意义 自走棋的核心难点不在单一动画，而在多阶段状态、经济规则、单位持久状态、固定步长战斗和 AI 合法决策之间的一致性。本项
+PAGE_05_TEXT_CHARS=342 SNIP=自走棋对战系统课程设计报告 第 5 页 1.4 输入与输出要求 类型 输入/输出 具体内容 用户输入 鼠标 按钮点击、商店购买、拖拽部署/回备用区/出售区、战斗单位选择、技 能释放、暂停和继续。 文件
+PAGE_06_TEXT_CHARS=19 SNIP=自走棋对战系统课程设计报告 第 6 页
+PAGE_07_TEXT_CHARS=655 SNIP=自走棋对战系统课程设计报告 第 7 页 2 系统总体设计 2.1 总体架构 工程由 AutoChessCore、AutoChessGame、AutoChessTests 和 AutoChessDist
+PAGE_08_TEXT_CHARS=1086 SNIP=自走棋对战系统课程设计报告 第 8 页 2.3 模块依赖与数据流 1. GameApp 从 main.cpp 接收已经选择的数据目录，加载 ConfigBundle 和中文字体。 2. Screen
+PAGE_09_TEXT_CHARS=974 SNIP=自走棋对战系统课程设计报告 第 9 页 图 3-1 核心类层次与多态关系 代表性类 主要属性（均多于 3 项） 主要方法（均多于 3 项） GameApp dataDirectory_、window_
+PAGE_10_TEXT_CHARS=947 SNIP=自走棋对战系统课程设计报告 第 10 页 3.4 经济与准备阶段 每回合开始按配置发放 5 金币，败者额外获得 2 金币。商店有 6 个槽位，刷新费为 2；备用 区容量为 8。购买、刷新、部署、回备用
+PAGE_11_TEXT_CHARS=1492 SNIP=自走棋对战系统课程设计报告 第 11 页 // 此代码块在窗口存活期间限制累计时间并按固定步长更新核心。 while (window_.isOpen()) { sf::Event event{}; w
+PAGE_12_TEXT_CHARS=1318 SNIP=自走棋对战系统课程设计报告 第 12 页 const std::filesystem::path& executableDirectoryPath, const std::filesystem::pa
+PAGE_13_TEXT_CHARS=387 SNIP=自走棋对战系统课程设计报告 第 13 页 5.4 独立发布目录 dist 目录精确包含 10 个文件：AutoChessGame.exe、3 个 SFML Release DLL、game.cfg、
+PAGE_14_TEXT_CHARS=37 SNIP=自走棋对战系统课程设计报告 第 14 页 图 6-2 帮助页：新手操作说明
+PAGE_15_TEXT_CHARS=44 SNIP=自走棋对战系统课程设计报告 第 15 页 图 6-3 地图选择 图 6-4 玩家分队选择
+PAGE_16_TEXT_CHARS=55 SNIP=自走棋对战系统课程设计报告 第 16 页 图 6-5 AI 策略选择 图 6-6 准备阶段完整 HUD 与商店
+PAGE_17_TEXT_CHARS=54 SNIP=自走棋对战系统课程设计报告 第 17 页 图 6-7 购买单位后备用区状态 图 6-8 拖拽部署后的棋盘状态
+PAGE_18_TEXT_CHARS=53 SNIP=自走棋对战系统课程设计报告 第 18 页 图 6-9 战斗单位、状态条与目标连线 图 6-10 暂停覆盖层
+PAGE_19_TEXT_CHARS=587 SNIP=自走棋对战系统课程设计报告 第 19 页 图 6-11 继续后恢复战斗推进 7 系统调试 7.1 CMake 工程文件名错误 现象：初始工程使用 CMakeList.txt，CMake 无法按约定发现
+PAGE_20_TEXT_CHARS=1181 SNIP=自走棋对战系统课程设计报告 第 20 页 离、不同编号的最小回归用例，不修改生产规则。验证：新增断言通过，完整 Release 回归与 18 组 AI 输出保持一致。 7.4 调试方法总结 • 编译问
+PAGE_21_TEXT_CHARS=390 SNIP=自走棋对战系统课程设计报告 第 21 页 第二个收获是先冻结规则再写界面。配置格式、战斗事件顺序、经济比例和地图路线在早期确定 后，后续 UI 和 AI 只需调用稳定接口。402 项自动断言与 18
+PAGE_22_TEXT_CHARS=3503 SNIP=自走棋对战系统课程设计报告 第 22 页 附录 A 关键源程序与源程序清单 关键源程序已在第 4 章列出并保留用途注释。本节给出仓库中的全部 C++ 源文件和测试文件清 单，实际提交以 Git 仓库内
+PAGE_23_TEXT_CHARS=1939 SNIP=自走棋对战系统课程设计报告 第 23 页 64 src/core/skills/Skill.hpp 技能抽象与技能效果系统 65 src/core/skills/SkillSystem.cpp 技能抽
+PAGE_24_TEXT_CHARS=115 SNIP=自走棋对战系统课程设计报告 第 24 页 附录 B 完整课程设计任务书与评分表 以下 4 页由原文件《2026程设2大作业任务书-自走棋对战系统.docx》直接渲染并整页嵌入。 评分表位于本报告源程序
+PAGE_25_TEXT_CHARS=41 SNIP=自走棋对战系统课程设计报告 第 25 页 附图 B-1 原课程设计任务书第 1 页
+PAGE_26_TEXT_CHARS=41 SNIP=自走棋对战系统课程设计报告 第 26 页 附图 B-2 原课程设计任务书第 2 页
+PAGE_27_TEXT_CHARS=41 SNIP=自走棋对战系统课程设计报告 第 27 页 附图 B-3 原课程设计任务书第 3 页
+PAGE_28_TEXT_CHARS=41 SNIP=自走棋对战系统课程设计报告 第 28 页 附图 B-4 原课程设计任务书第 4 页
+TEXT_PAGES[目录]=2,3,4,7,8,11,12,13,19,20
+TEXT_PAGES[附录：源程序清单]=NONE
+TEXT_PAGES[评分表]=3,24
+TEXT_PAGES[CMakeList.txt]=19
+TEXT_PAGES[AutoChessDist]=7,20
+PNG_PAGES=28
+page-01.png: size=1191x1684 margins=(128, 279, 312, 526) ink=0.01668
+page-02.png: size=1191x1684 margins=(142, 75, 117, 72) ink=0.04102
+page-03.png: size=1191x1684 margins=(184, 75, 126, 72) ink=0.02486
+page-04.png: size=1191x1684 margins=(135, 75, 119, 72) ink=0.07169
+page-05.png: size=1191x1684 margins=(136, 75, 119, 72) ink=0.08990
+page-06.png: size=1191x1684 margins=(509, 75, 449, 72) ink=0.00125
+page-07.png: size=1191x1684 margins=(135, 75, 119, 72) ink=0.14809
+page-08.png: size=1191x1684 margins=(136, 75, 118, 72) ink=0.06252
+page-09.png: size=1191x1684 margins=(135, 75, 119, 72) ink=0.22005
+page-10.png: size=1191x1684 margins=(135, 75, 118, 72) ink=0.06645
+page-11.png: size=1191x1684 margins=(142, 75, 125, 72) ink=0.44504
+page-12.png: size=1191x1684 margins=(135, 75, 119, 72) ink=0.19356
+page-13.png: size=1191x1684 margins=(142, 75, 126, 72) ink=0.24243
+page-14.png: size=1191x1684 margins=(158, 75, 142, 72) ink=0.22456
+page-15.png: size=1191x1684 margins=(158, 75, 142, 72) ink=0.44740
+page-16.png: size=1191x1684 margins=(158, 75, 142, 72) ink=0.44776
+page-17.png: size=1191x1684 margins=(158, 75, 142, 72) ink=0.44803
+page-18.png: size=1191x1684 margins=(158, 75, 142, 72) ink=0.44787
+page-19.png: size=1191x1684 margins=(141, 75, 125, 72) ink=0.25826
+page-20.png: size=1191x1684 margins=(142, 75, 117, 72) ink=0.05699
+page-21.png: size=1191x1684 margins=(142, 75, 117, 72) ink=0.02493
+page-22.png: size=1191x1684 margins=(130, 75, 113, 72) ink=0.12048
+page-23.png: size=1191x1684 margins=(130, 75, 113, 72) ink=0.06156
+page-24.png: size=1191x1684 margins=(142, 75, 144, 72) ink=0.00992
+page-25.png: size=1191x1684 margins=(359, 75, 357, 72) ink=0.01173
+page-26.png: size=1191x1684 margins=(269, 75, 259, 72) ink=0.04450
+page-27.png: size=1191x1684 margins=(269, 75, 271, 72) ink=0.03221
+page-28.png: size=1191x1684 margins=(272, 75, 276, 72) ink=0.01068
+EDGE_WARNINGS=0
+BLANK_WARNINGS=0
+=== inspect_report_structure.py ===
+TABLE_SUMMARY
+TABLE_1: rows=6 cols=2 first=课程名称 | 计算机程序设计基础2 last=指导教师 | ________________________
+TABLE_2: rows=9 cols=3 first=功能模块 | 需求 | 验收边界 last=测试与发布 | 独立测试程序、非法输入样本、日志、dist 目录。 | Release 402 PASS / 0 FAIL，dist 文件清单固定。
+TABLE_3: rows=6 cols=3 first=类型 | 输入/输出 | 具体内容 last=测试输出 | 日志 | PASS/FAIL、回合摘要、18 组 AI MATRIX、文件哈希和构建环境。
+TABLE_4: rows=7 cols=2 first=原则 | 实现方式与收益 last=发布优先路径 | EXE 旁 data 存在时必须使用它；只有旁置 data 目录不存在时才允许开发目录回退。
+TABLE_5: rows=7 cols=3 first=文件 | 主要内容 | 最终规模 last=map_02.map | 15×9 多路线峡谷 | A/B 各 3 条短/中/长路线
+TABLE_6: rows=5 cols=3 first=代表性类 | 主要属性（均多于 3 项） | 主要方法（均多于 3 项） last=MatchScreen | 只读快照、选择项、商店卡、复活卡、拖拽状态、坐标换算、按钮、HUD、暂停和技能状态 | handleEvent、update、draw、setView、rebuildChoices、finishBasicDrag、drawCombatUnits、ref
+TABLE_7: rows=4 cols=3 first=策略 | 决策偏好 | 可观察差异 last=路线型 Route | 评估路线长度、部署格和价格效率，优先路线收益。 | 适配两张不同路线地图。
+TABLE_8: rows=8 cols=2 first=项目 | 最终环境/方法 last=发布验收 | 将 dist 复制到项目外目录，以 D:\ 为工作目录启动
+TABLE_9: rows=7 cols=3 first=测试范围 | 结果 | 证据 last=AI 结束条件 | 18 组均 rounds=3 | 最终 Release 日志
+TABLE_10: rows=9 cols=3 first=故障样本 | 预期行为 | 最终结果 last=继续 | 核心恢复推进 | 继续后截图 SHA-256 改变
+TABLE_11: rows=105 cols=3 first=序号 | 文件 | 职责 last=104 | tests/TestMain.cpp | 自动测试入口、断言或集成测试
+DRAWING_PARAGRAPHS
+DRAWING_1: para=69 name='Picture 1' descr=None size=4248000x6372000 prev='' text='' next='图 1-1 自走棋对局运行流程图'
+DRAWING_2: para=75 name='Picture 2' descr=None size=5832000x3645000 prev='工程由 AutoChessCore、AutoChessGame、AutoChessTests 和 AutoChessDist 四个 CMake 目标组成。Aut' text='' next='图 2-1 系统功能模块图'
+DRAWING_3: para=92 name='Picture 3' descr=None size=5832000x4037538 prev='项目定义多个抽象层次。Unit、Skill、Screen 为抽象基类；ISkillUser、IAiStrategy、IPlayerController 为纯接口' text='' next='图 3-1 核心类层次与多态关系'
+DRAWING_4: para=128 name='Picture 4' descr=None size=5652000x3179250 prev='以下截图均来自第 10 天 Release x64 正式验收。原始 13 张截图中两组画面哈希重复：返回主菜单与初始主菜单相同，暂停延时与暂停画面相同，因此报告' text='' next='图 6-1 主菜单：开始游戏、帮助与退出'
+DRAWING_5: para=130 name='Picture 5' descr=None size=5652000x3179250 prev='图 6-1 主菜单：开始游戏、帮助与退出' text='' next='图 6-2 帮助页：新手操作说明'
+DRAWING_6: para=133 name='Picture 6' descr=None size=5652000x3179250 prev='' text='' next='图 6-3 地图选择'
+DRAWING_7: para=135 name='Picture 7' descr=None size=5652000x3179250 prev='图 6-3 地图选择' text='' next='图 6-4 玩家分队选择'
+DRAWING_8: para=138 name='Picture 8' descr=None size=5652000x3179250 prev='' text='' next='图 6-5 AI 策略选择'
+DRAWING_9: para=140 name='Picture 9' descr=None size=5652000x3179250 prev='图 6-5 AI 策略选择' text='' next='图 6-6 准备阶段完整 HUD 与商店'
+DRAWING_10: para=143 name='Picture 10' descr=None size=5652000x3179250 prev='' text='' next='图 6-7 购买单位后备用区状态'
+DRAWING_11: para=145 name='Picture 11' descr=None size=5652000x3179250 prev='图 6-7 购买单位后备用区状态' text='' next='图 6-8 拖拽部署后的棋盘状态'
+DRAWING_12: para=148 name='Picture 12' descr=None size=5652000x3179250 prev='' text='' next='图 6-9 战斗单位、状态条与目标连线'
+DRAWING_13: para=150 name='Picture 13' descr=None size=5652000x3179250 prev='图 6-9 战斗单位、状态条与目标连线' text='' next='图 6-10 暂停覆盖层'
+DRAWING_14: para=153 name='Picture 14' descr=None size=5652000x3179250 prev='' text='' next='图 6-11 继续后恢复战斗推进'
+DRAWING_15: para=197 name='Picture 15' descr=None size=5832000x8246086 prev='' text='' next='附图 B-1 原课程设计任务书第 1 页'
+DRAWING_16: para=200 name='Picture 16' descr=None size=5832000x8246086 prev='' text='' next='附图 B-2 原课程设计任务书第 2 页'
+DRAWING_17: para=203 name='Picture 17' descr=None size=5832000x8246086 prev='' text='' next='附图 B-3 原课程设计任务书第 3 页'
+DRAWING_18: para=206 name='Picture 18' descr=None size=5832000x8246086 prev='' text='' next='附图 B-4 原课程设计任务书第 4 页'
+HEADINGS
+P6 Heading 1: 摘  要
+P9 Heading 1: 目  录
+P54 Heading 1: 1 系统需求分析
+P55 Heading 2: 1.1 设计目的与意义
+P58 Heading 2: 1.2 功能需求
+P60 Heading 2: 1.3 非功能需求
+P67 Heading 2: 1.4 输入与输出要求
+P72 Heading 1: 2 系统总体设计
+P73 Heading 2: 2.1 总体架构
+P77 Heading 2: 2.2 关键设计原则
+P79 Heading 2: 2.3 模块依赖与数据流
+P86 Heading 1: 3 系统详细设计
+P87 Heading 2: 3.1 数据文件设计
+P90 Heading 2: 3.2 类层次、抽象类与多态
+P95 Heading 2: 3.3 运算符重载
+P97 Heading 2: 3.4 经济与准备阶段
+P99 Heading 2: 3.5 战斗、技能与结算
+P102 Heading 2: 3.6 AI 设计
+P104 Heading 2: 3.7 界面设计
+P106 Heading 1: 4 系统实现
+P107 Heading 2: 4.1 固定步长主循环
+P110 Heading 2: 4.2 多重继承与单位角色
+P112 Heading 2: 4.3 统一命令
+P114 Heading 2: 4.4 独立发布路径
+P117 Heading 1: 5 系统测试
+P118 Heading 2: 5.1 测试环境与方法
+P120 Heading 2: 5.2 最终自动测试结果
+P122 Heading 2: 5.3 启动故障与运行验收
+P124 Heading 2: 5.4 独立发布目录
+P126 Heading 1: 6 运行界面与结果
+P155 Heading 1: 7 系统调试
+P156 Heading 2: 7.1 CMake 工程文件名错误
+P158 Heading 2: 7.2 发布包数据路径依赖开发目录
+P160 Heading 2: 7.3 同帧索敌并列规则缺少直接断言
+P162 Heading 2: 7.4 调试方法总结
+P167 Heading 1: 8 使用说明与编程体会
+P168 Heading 2: 8.1 发布程序使用步骤
+P177 Heading 2: 8.2 构建与测试步骤
+P183 Heading 2: 8.3 编程体会
+P186 Heading 1: 9 总结与展望
+P190 Heading 1: 附录 A 关键源程序与源程序清单
+P194 Heading 1: 附录 B 完整课程设计任务书与评分表
+=== final assertions ===
+DOCX_SHA256=A82DE172C8E5DBCADB2EDBE310BCFCDE24679713720F4A2177589B452C63F6E6
+REPORT_PNG_COUNT=28
+SOURCE_LIST_ITEMS=104
+AI_SCREENSHOT_SHA256=94F418FB9DDB15DF192184E224528F0EBA9F5AA6514983249510B68FACD05939
+EMBEDDED_IMAGE8_SHA256=94F418FB9DDB15DF192184E224528F0EBA9F5AA6514983249510B68FACD05939
+AI_SCREENSHOT_EXACTLY_EMBEDDED=True
+COVER_CLASS=BLANK
+COVER_STUDENT_ID=BLANK
+COVER_NAME=BLANK
+COVER_INSTRUCTOR=BLANK
+COVER_BLANKS_VERIFIED_BY_PAGE_01_RENDER=True

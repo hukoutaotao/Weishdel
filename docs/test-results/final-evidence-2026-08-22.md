@@ -1,32 +1,34 @@
-# 第10天最终测试证据
+# 第10天最终提交审计证据
 
 日期：2026-08-22
 
-## 1. 程序候选版本
+## 1. 最终生产候选
 
 - 分支：`步骤2`
-- 候选提交：`967915dc8b7f0399046fb04c8a1d9dacbf38c935`（`967915d`）
-- 提交标题：`10.6 完成独立发布目录`
-- 候选范围：截至 10.6 的生产代码、自动测试和独立 dist；10.7 只增加证据文件。
-- 构建配置：MSVC x64 Release，C++17，SFML 2.6.2。
+- 生产候选提交：`69940461c03a75df7dac8ff71a0fdd37577920be`（`6994046`）
+- 提交标题：`10.9 完成使用说明与提交文档`
+- 候选范围：截至 10.9 的生产代码、测试、界面、报告和独立说明文档；10.10 只重新构建、重新测试并固定审计证据。
+- 构建配置：C++17、MSVC x64 Release、SFML 2.6.2、CMake 预设 `msvc-release`。
+- 本轮没有引入新第三方库，没有修改生产代码或测试判定。
 
-## 2. 固定测试输入与随机性
+## 2. 本轮 Release 构建
 
-- 正式输入目录：`dist/data`，共 6 个文件。
-- 非法输入样本目录：`tests/data`，共 30 个文件。
-- 固定随机种子：`20260814`，来源于 `dist/data/game.cfg`。
-- 默认回合数：3；所有 18 组 AI 场景均记录 `rounds=3`。
-- 哈希算法：SHA-256；下表哈希均针对本次提交目录中的实际文件字节。
+- 命令顺序：`cmake --preset msvc-release --fresh`，随后 `cmake --build --preset msvc-release`。
+- 配置与构建退出码：0；生成 Release 游戏、测试程序和核心静态库。
+- 最终构建日志：`docs/test-results/final-release-build-2026-08-22.log`。
+- 最终构建日志 SHA-256：`0AB02153DC8B8F80F55B4B4D314B2CB056487458D745D9FC344E1269C3EE2CC8`。
+- `build/msvc-release/AutoChessGame.exe` SHA-256：`9BA2F2D751203BE62446EF980812B74BE14E0A576EA60A719CAE3566EB0469E4`。
+- `build/msvc-release/AutoChessTests.exe` SHA-256：`50D47F5B9BCDEFC124E4591A5B4CE53FFD2AE7796910EC76E9E870673D697373`。
 
-## 3. 最终自动测试结论
+## 3. 最终自动测试
 
 - 测试程序退出码：0。
 - 结果：402 PASS / 0 FAIL。
 - AI 集成矩阵：18 组，覆盖 3 种策略 × 2 张地图 × 3 个分队。
-- 18 组 `command_failures` 全部为 0，全部在 3 回合结束。
-- 正式完整日志：`docs\test-results\final-release-tests-2026-08-22.log`。
-- 正式日志 SHA-256：`992A9CE405957ACD86BBCD517B37287ACB809FCF6419C0BD55CB7F6503C2FE8C`。
-- 测试程序 SHA-256：`9BFBD5138BDEC82571AF1DFAB48B961C9BE5798082E12438A82EE25A863ECE41`。
+- 18 组均为 `command_failures=0`、`rounds=3`。
+- 固定随机种子：`20260814`。
+- 最终测试日志：`docs/test-results/final-release-tests-2026-08-22.log`。
+- 最终测试日志 SHA-256：`A75B294C947EFB2EF8FF1EC52AFD69F237994C5076D1D955805CF33A6859DA06`。
 
 ## 4. AI 十八组结果
 
@@ -51,11 +53,17 @@
 | route | map_02 | assault_team | 363 | 13 | 0 | draw | 3 |
 | route | map_02 | route_team | 363 | 13 | 0 | A_win | 3 |
 
-## 5. dist 发布文件 SHA-256
+## 5. 独立 dist 发布目录
+
+- 已执行 `cmake --build --preset msvc-release --target AutoChessDist`，退出码为 0。
+- `dist` 恰好 10 个文件：1 个 EXE、3 个 SFML Release DLL、4 个 cfg、2 张地图。
+- 六个 `dist/data` 文件与源码 `data` 对应文件 SHA-256 全部一致。
+- dist 构建日志：`docs/test-results/final-dist-build-2026-08-22.log`。
+- dist 构建日志 SHA-256：`D4EEA85301D6A5AA16387270B6B74AF367918FED84A863502AC76842C64DA6A4`。
 
 | 相对路径 | 字节数 | SHA-256 |
 |---|---:|---|
-| `AutoChessGame.exe` | 484864 | `1432503713D7CA8A1ACDFF5094DE354B50EAE002A449511BBDD2D2EFDC886172` |
+| `AutoChessGame.exe` | 484864 | `9BA2F2D751203BE62446EF980812B74BE14E0A576EA60A719CAE3566EB0469E4` |
 | `data/factions.cfg` | 1147 | `C5DE0D244B4553ECD98FD7CDA30F0F59C665713CA139C268D3811C33111C6337` |
 | `data/game.cfg` | 262 | `E2472F937AF6129792F6386DCB1C37882FC68B6AA860ED5241DF81E713D8A95A` |
 | `data/maps/map_01.map` | 543 | `AA871811FD2D803701C1AD35E047425B108AE37A7515616BC20C5A15244F4DC5` |
@@ -66,7 +74,17 @@
 | `sfml-system-2.dll` | 51200 | `F91C896B016AE4BC57425FE86EDDF05C159422E93C1CAE1E2405C254DC0AAED1` |
 | `sfml-window-2.dll` | 145408 | `6FBF5E2011B91BF10CB64713ED488F7E0E96806602324CE1BEB57A600B6E0C9C` |
 
-## 6. 非法输入样本 SHA-256
+## 6. 项目外启动验收
+
+- 将本轮 `dist` 复制到 `D:\1` 之外的唯一临时目录，并写入本次所有权标记。
+- 从 `D:\` 工作目录启动外部副本，成功创建标题为 `AutoChess` 的窗口。
+- 通过窗口关闭消息正常关闭，进程退出码为 0。
+- 清理前再次核对绝对路径、目录前缀和所有权标记，只删除本轮创建的外部临时目录。
+- 结论：发布程序不依赖项目当前工作目录。
+- 项目外启动日志：`docs/test-results/final-runtime-acceptance-2026-08-22.log`。
+- 项目外启动日志 SHA-256：`512494764015C79A17951344F600EFE07030801AE80A804C453FCCFAAA7C56F3`。
+
+## 7. 非法输入样本 SHA-256
 
 | 相对路径 | SHA-256 |
 |---|---|
@@ -101,8 +119,22 @@
 | `tests/data/unit_missing_field.cfg` | `AA839F8914F63095E8C21D28B75F21CC751AA97506E305447DBE704402A311B7` |
 | `tests/data/unit_missing_skill_reference.cfg` | `194E24B26ECFAEDA6F9AE0043E19CE989775AC7D7B3BDDCAFBA1CC0BC91A6C6E` |
 
-## 7. 可追溯结论
+## 8. 报告与演示材料审计
 
-- 候选提交、最终输入、测试输出和发布文件均已用路径与 SHA-256 关联。
-- 后续文档与演示材料不得修改生产代码或 dist 文件；若发生修改，必须重新执行本清单。
-- 本步骤未引入第三方库，未修改生产代码，未修改测试判定。
+- 最终报告：`docs/自走棋对战系统课程设计报告.docx`，共 28 页。
+- 报告结构：18 张行内图片、0 张浮动图片、0 个超宽图片、0 个边缘警告、0 个空白页。
+- 附录 A 的源程序清单包含 104 项；附录 B 完整保留原任务书和评分表。
+- 最终 AI 截图与报告内嵌 `word/media/image8.png` 的 SHA-256 完全一致。
+- 报告只读审计日志：`docs/test-results/final-report-audit-2026-08-22.log`。
+- 报告只读审计日志 SHA-256：`FDB0D274957C7D2C47AAD4418FB441569CD871E610B8BBCEAE86552D581C9A8D`。
+- 演示视频录制脚本：`docs/演示视频录制脚本.md`。
+- 演示视频录制脚本 SHA-256：`A2356E9D2689EF24E394C4D131871EE2D9ECF96503F08D82377824418F0DF49B`。
+- 本机存在 Xbox Game Bar 和 Windows 截图工具；视频仍需学生本人完成隐私检查、连续录制和完整播放。
+- 报告封面个人信息及视频文件均未虚构。
+
+## 9. 最终结论
+
+- 本轮 fresh Release 构建、402 项自动测试、18 组 AI、dist 重建和项目外启动均已通过。
+- 候选提交、输入文件、测试输出、可执行文件和发布文件均已用路径与 SHA-256 关联。
+- 演示视频尚未实际录制和播放验收，因此不登记文件名、时长、大小或哈希，也不在提交检查表中勾选视频项目。
+- 报告封面的班级、学号、姓名和指导教师继续留空，必须由学生本人填写。

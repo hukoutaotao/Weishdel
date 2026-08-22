@@ -1,0 +1,13 @@
+AutoChess final dist build audit
+Candidate: 69940461c03a75df7dac8ff71a0fdd37577920be
+Started: 2026-08-22 19:45:26 +08:00
+Command: cmake --build --preset msvc-release --target AutoChessDist
+
+**********************************************************************
+** Visual Studio 2026 Developer Command Prompt v18.9.0
+** Copyright (c) 2026 Microsoft Corporation
+**********************************************************************
+[1/1] Assembling standalone AutoChess dist directory
+
+Finished: 2026-08-22 19:45:29 +08:00
+Exit code: 0
