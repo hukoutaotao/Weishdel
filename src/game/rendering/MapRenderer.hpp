@@ -5,6 +5,8 @@
 
 #include <SFML/Graphics/RenderTarget.hpp>
 
+#include <optional>
+
 namespace autochess::game
 {
     // 此无状态绘制器使用色块表现地形并可选显示双方预定义路线。
@@ -16,6 +18,7 @@ namespace autochess::game
             sf::RenderTarget& target,
             const core::MapDefinition& map,
             const BoardTransform& transform,
-            bool showRoutes);
+            bool showRoutes,
+            const std::optional<core::GridPosition>& deploymentPreview);
     };
 }

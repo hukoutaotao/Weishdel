@@ -173,6 +173,7 @@ namespace autochess::game
                     drag_.active = true;
                     drag_.unitId = unitId;
                     drag_.mousePosition = pixel;
+                    deploymentPreview_.reset();
                     return;
                 }
             }
@@ -181,6 +182,7 @@ namespace autochess::game
                 drag_.mousePosition = sf::Vector2f(
                     static_cast<float>(event.mouseMove.x),
                     static_cast<float>(event.mouseMove.y));
+                updateDeploymentPreview(drag_.mousePosition);
                 return;
             }
             if (event.type == sf::Event::MouseButtonReleased
@@ -296,7 +298,8 @@ namespace autochess::game
                 target,
                 view_.selectedMap.value(),
                 boardTransform_,
-                showRoutes_);
+                showRoutes_,
+                deploymentPreview_);
             if (routeToggleButton_ != nullptr)
             {
                 routeToggleButton_->draw(target);
@@ -440,7 +443,15 @@ namespace autochess::game
     // 此函数保存最新快照并仅在阶段变化时重建稳定按钮布局。
     void MatchScreen::updateView(const core::ReadOnlyGameView& view)
     {
+        const core::MatchPhase previousPhase = view_.phase;
         view_ = view;
+        // 此代码块在离开准备阶段或阶段发生变化时清除瞬时拖拽预览。
+        if (view_.phase != core::MatchPhase::Preparation
+            || previousPhase != view_.phase)
+        {
+            drag_ = DragState{};
+            deploymentPreview_.reset();
+        }
         // 此代码块在地图存在时为固定棋盘视口更新双向坐标变换。
         if (view_.selectedMap.has_value())
         {
@@ -481,6 +492,12 @@ namespace autochess::game
     void MatchScreen::setPaused(const bool paused) noexcept
     {
         paused_ = paused;
+        // 此代码块在暂停开始时结束未完成拖拽，防止覆盖层下残留预览。
+        if (paused_)
+        {
+            drag_ = DragState{};
+            deploymentPreview_.reset();
+        }
         refreshCombatWidgets();
     }
 
@@ -971,11 +988,64 @@ namespace autochess::game
         return core::InvalidOwnedUnitId;
     }
 
+    // 此函数只根据只读地图和玩家快照维护己方空部署格的悬停预览。
+    void MatchScreen::updateDeploymentPreview(
+        const sf::Vector2f pixel) noexcept
+    {
+        deploymentPreview_.reset();
+        if (!drag_.active
+            || !view_.selectedMap.has_value()
+            || !view_.self.has_value())
+        {
+            return;
+        }
+
+        const std::optional<core::GridPosition> grid =
+            boardTransform_.pixelToGrid(pixel);
+        if (!grid.has_value())
+        {
+            return;
+        }
+
+        const core::MapDefinition& map = view_.selectedMap.value();
+        const core::GridPosition target = grid.value();
+        if (target.x < 0 || target.y < 0
+            || target.x >= map.width || target.y >= map.height
+            || map.gridRows.size() != static_cast<std::size_t>(map.height)
+            || map.gridRows[static_cast<std::size_t>(target.y)].size()
+                != static_cast<std::size_t>(map.width)
+            || map.gridRows[static_cast<std::size_t>(target.y)]
+                           [static_cast<std::size_t>(target.x)] != 'A')
+        {
+            return;
+        }
+
+        // 此代码块把已有单位的格子保留给合成交互，不显示普通部署预览。
+        if (view_.self->deployments.find(target)
+            != view_.self->deployments.end())
+        {
+            return;
+        }
+
+        const auto route = std::find_if(
+            map.routes.begin(),
+            map.routes.end(),
+            [target](const core::Route& candidate) {
+                return candidate.side == core::MapSide::A
+                    && candidate.start == target;
+            });
+        if (route != map.routes.end())
+        {
+            deploymentPreview_ = target;
+        }
+    }
+
     // 此函数把拖拽释放转换为地图部署、备用槽移动或本地失败提示。
     void MatchScreen::finishBasicDrag(const sf::Vector2f pixel)
     {
         const core::OwnedUnitId unitId = drag_.unitId;
         drag_ = DragState{};
+        deploymentPreview_.reset();
 
         // 此代码块让出售区优先于其他投放区域生成出售命令。
         if (sellZoneBounds().contains(pixel))

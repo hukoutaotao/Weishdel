@@ -10,6 +10,7 @@
 #include <SFML/System/Clock.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,9 @@ namespace autochess::game
         // 此函数在鼠标按下位置查找己方可拖拽活动单位。
         core::OwnedUnitId hitTestOwnedUnit(sf::Vector2f pixel) const noexcept;
 
+        // 此函数根据拖拽鼠标位置更新己方空部署格的纯界面预览。
+        void updateDeploymentPreview(sf::Vector2f pixel) noexcept;
+
         // 此函数根据鼠标释放区域生成部署或回备用区命令。
         void finishBasicDrag(sf::Vector2f pixel);
 
@@ -135,6 +139,8 @@ namespace autochess::game
         bool showDeathList_ = false;
         sf::Clock messageClock_;
         DragState drag_;
+        // 此字段只保存拖拽期间当前可预览的己方空部署格。
+        std::optional<core::GridPosition> deploymentPreview_;
         UiAction pendingAction_;
         // 此代码块保存暂停状态和后续交互控件的稳定句柄。
         bool paused_ = false;
