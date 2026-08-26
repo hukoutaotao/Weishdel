@@ -14,6 +14,14 @@ if(NOT MSVC)
     message(FATAL_ERROR "The current project requires the MSVC compiler.")
 endif()
 
+# CMake 3.29 may decode localized MSVC /showIncludes output with the wrong
+# console code page. Override the prefix used by Ninja so header changes
+# reliably invalidate every translation unit that includes them.
+if(CMAKE_GENERATOR MATCHES "^Ninja")
+    set(CMAKE_CXX_CL_SHOWINCLUDES_PREFIX "注意: 包含文件:  ")
+    set(CMAKE_CL_SHOWINCLUDES_PREFIX "${CMAKE_CXX_CL_SHOWINCLUDES_PREFIX}")
+endif()
+
 set(SFML_STATIC_LIBRARIES FALSE)
 
 list(
