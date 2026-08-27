@@ -561,17 +561,22 @@ namespace autochess::game
 
         for (const core::BattleUnit& unit : view_.battleUnits)
         {
-            UnitAnimationInstance* animation = animationFor(unit.id, unit.identity);
+            const core::OwnedUnitId animationId =
+                unit.ownedUnitId != core::InvalidOwnedUnitId
+                ? unit.ownedUnitId
+                : static_cast<core::OwnedUnitId>(unit.id);
+            UnitAnimationInstance* animation =
+                animationFor(animationId, unit.identity);
             if (animation == nullptr || !animation->valid())
             {
                 continue;
             }
 
-            const bool firstSeen = !battleSeen_[unit.id];
-            const auto previousSequence = lastActionSequences_.find(unit.id);
+            const bool firstSeen = !battleSeen_[animationId];
+            const auto previousSequence = lastActionSequences_.find(animationId);
             const bool newBasicAction = previousSequence != lastActionSequences_.end()
                 && previousSequence->second != unit.basicActionSequence;
-            const auto previousPosition = lastBattlePositions_.find(unit.id);
+            const auto previousPosition = lastBattlePositions_.find(animationId);
             const bool moved = previousPosition != lastBattlePositions_.end()
                 && !(previousPosition->second == unit.position);
 
@@ -601,9 +606,9 @@ namespace autochess::game
                 animation->play(UnitAnimationAction::Move);
             }
 
-            battleSeen_[unit.id] = true;
-            lastActionSequences_[unit.id] = unit.basicActionSequence;
-            lastBattlePositions_[unit.id] = unit.position;
+            battleSeen_[animationId] = true;
+            lastActionSequences_[animationId] = unit.basicActionSequence;
+            lastBattlePositions_[animationId] = unit.position;
         }
     }
     // 此函数使用颜色区分成功和失败的核心中文结果。
@@ -1411,7 +1416,11 @@ namespace autochess::game
                 unit.id == selectedBattleUnitId_);
 
             // 此代码块优先绘制已同步的Spine角色，资源失败时保留上面的静态回退。
-            const auto animationIt = animations_.find(unit.id);
+            const core::OwnedUnitId animationId =
+                unit.ownedUnitId != core::InvalidOwnedUnitId
+                ? unit.ownedUnitId
+                : static_cast<core::OwnedUnitId>(unit.id);
+            const auto animationIt = animations_.find(animationId);
             if (animationIt != animations_.end()
                 && animationIt->second != nullptr
                 && animationIt->second->valid())
@@ -1419,9 +1428,7 @@ namespace autochess::game
                 animationIt->second->draw(
                     target,
                     center,
-                    animationIt->second->scaleForHeight(
-                        tileSize * 0.9F,
-                        false),
+                    animationIt->second->scaleForHeight(tileSize * 0.68F),
                     unit.side == core::MapSide::A);
             }
         }
@@ -1516,9 +1523,7 @@ namespace autochess::game
                         sf::Vector2f(
                             bounds.left + bounds.width / 2.0F,
                             bounds.top + bounds.height / 2.0F),
-                        animationIt->second->scaleForHeight(
-                            bounds.height * 0.9F,
-                            true),
+                        animationIt->second->scaleForHeight(bounds.height * 0.72F),
                         true);
                 }
             }
@@ -1553,9 +1558,7 @@ namespace autochess::game
                         sf::Vector2f(
                             bounds.left + bounds.width / 2.0F,
                             bounds.top + bounds.height / 2.0F),
-                        animationIt->second->scaleForHeight(
-                            bounds.height * 0.9F,
-                            true),
+                        animationIt->second->scaleForHeight(bounds.height * 0.72F),
                         true);
                 }
             }

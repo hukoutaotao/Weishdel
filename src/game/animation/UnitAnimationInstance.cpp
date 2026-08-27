@@ -151,21 +151,29 @@ namespace autochess::game
     }
 
     float UnitAnimationInstance::scaleForHeight(
-        const float targetHeight, const bool preparation) const noexcept
+        const float targetHeight) const noexcept
     {
-        if (asset_ == nullptr)
+        if (asset_ == nullptr || currentDrawable_ == nullptr)
         {
             return 1.0F;
         }
-        const auto& skeletonAsset = preparation
+
+        // Move 使用准备 skeleton，Start/Attack/Die 使用战斗 skeleton。
+        // 必须依据当前 drawable 取高度，不能让调用者按页面阶段猜测，
+        // 否则战斗开始后切回 move 会使用错误的 skeleton 高度缩放。
+        const auto& skeletonAsset = currentDrawable_ == preparationDrawable_.get()
             ? asset_->preparation
             : asset_->combat;
         const float height = skeletonAsset.skeletonData == nullptr
             ? 0.0F
             : skeletonAsset.skeletonData->getHeight();
-        return height > 0.0F
-            ? std::max(0.001F, targetHeight / height)
-            : 1.0F;
+        if (height <= 0.0F || targetHeight <= 0.0F)
+        {
+            // 无效高度时隐藏式回退到一个保守比例，避免原始 Spine 尺寸
+            // 把人物放大到棋盘和窗口之外。
+            return 0.01F;
+        }
+        return std::clamp(targetHeight / height, 0.001F, 1.0F);
     }
 
     void UnitAnimationInstance::update(const float deltaSeconds)
