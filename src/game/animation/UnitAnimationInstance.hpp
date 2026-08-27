@@ -36,6 +36,8 @@ namespace autochess::game
         bool valid() const noexcept { return asset_ != nullptr; }
         UnitAnimationAction currentAction() const noexcept { return currentAction_; }
         const std::string& currentClip() const noexcept { return currentClip_; }
+        bool currentAnimationComplete() const noexcept;
+        float scaleForHeight(float targetHeight, bool preparation) const noexcept;
 
     private:
         UnitAnimationAssetPtr asset_;

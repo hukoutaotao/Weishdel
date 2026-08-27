@@ -3,6 +3,8 @@
 #include "core/match/ReadOnlyGameView.hpp"
 #include "core/config/ConfigBundleLoader.hpp"
 #include "game/rendering/BoardTransform.hpp"
+#include "game/animation/SpineAssetRepository.hpp"
+#include "game/animation/UnitAnimationInstance.hpp"
 #include "game/screens/Screen.hpp"
 #include "game/ui/Button.hpp"
 
@@ -10,9 +12,12 @@
 #include <SFML/System/Clock.hpp>
 
 #include <memory>
+#include <filesystem>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace autochess::game
 {
@@ -22,7 +27,8 @@ namespace autochess::game
     public:
         MatchScreen(
             const sf::Font& font,
-            const core::ConfigBundle& config);
+            const core::ConfigBundle& config,
+            std::filesystem::path dataDirectory);
 
         void handleEvent(const sf::Event& event) override;
         void draw(sf::RenderTarget& target) const override;
@@ -30,6 +36,9 @@ namespace autochess::game
 
         // 此函数复制最新只读快照并在阶段变化时重建选择按钮。
         void updateView(const core::ReadOnlyGameView& view);
+
+        // 此函数以固定步长推进已加载的 Spine 实例，不改变核心结算。
+        void updateAnimations(float deltaSeconds);
 
         // 此函数显示最近一次核心命令的中文结果。
         void showCommandResult(const core::CommandResult& result);
@@ -111,6 +120,14 @@ namespace autochess::game
         // 此函数在连续战斗坐标上命中离鼠标最近的己方单位。
         core::BattleUnitId hitTestBattleUnit(sf::Vector2f pixel) const noexcept;
 
+        // 此函数按单位 ID 获取或创建共享资源对应的独立 Spine 实例。
+        UnitAnimationInstance* animationFor(
+            core::OwnedUnitId unitId,
+            const core::UnitIdentity& identity);
+
+        // 此函数将当前准备/战斗快照转换为 relax、move、start、attack、die。
+        void syncAnimations(core::MatchPhase previousPhase);
+
         // 此函数绘制带明确红色边框和标题的出售投放区。
         void drawSellZone(sf::RenderTarget& target) const;
 
@@ -155,5 +172,11 @@ namespace autochess::game
         core::BattleUnitId selectedBattleUnitId_ = core::InvalidBattleUnitId;
         // 此字段防止核心返回结果前重复排队同一个技能命令。
         bool skillCommandPending_ = false;
+        SpineAssetRepository animationRepository_;
+        std::unordered_map<core::OwnedUnitId, std::unique_ptr<UnitAnimationInstance>> animations_;
+        std::unordered_map<core::OwnedUnitId, std::uint64_t> lastActionSequences_;
+        std::unordered_map<core::OwnedUnitId, core::BattlePosition> lastBattlePositions_;
+        std::unordered_map<core::OwnedUnitId, bool> battleSeen_;
+        bool animationCombatActive_ = false;
     };
 }

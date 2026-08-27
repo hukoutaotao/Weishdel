@@ -223,7 +223,7 @@ namespace autochess::game
         computerController_ = std::make_unique<core::AiController>(
             config_,
             core::MapSide::B);
-        screen_ = std::make_unique<MatchScreen>(font_, config_);
+        screen_ = std::make_unique<MatchScreen>(font_, config_, dataDirectory_);
         accumulatorSeconds_ = 0.0F;
         paused_ = false;
         settlementHoldFrames_ = 0;
@@ -388,6 +388,11 @@ namespace autochess::game
             || phase == core::MatchPhase::RoundSettlement)
         {
             match_->step();
+        }
+
+        if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
+        {
+            matchScreen->updateAnimations(FixedStepSeconds);
         }
 
         // 此代码块只在战斗刚结束时建立一次固定长度的结算停留。

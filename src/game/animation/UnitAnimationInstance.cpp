@@ -140,6 +140,34 @@ namespace autochess::game
         return true;
     }
 
+    bool UnitAnimationInstance::currentAnimationComplete() const noexcept
+    {
+        if (currentDrawable_ == nullptr || currentDrawable_->state == nullptr)
+        {
+            return true;
+        }
+        spine::TrackEntry* entry = currentDrawable_->state->getCurrent(0);
+        return entry == nullptr || entry->isComplete();
+    }
+
+    float UnitAnimationInstance::scaleForHeight(
+        const float targetHeight, const bool preparation) const noexcept
+    {
+        if (asset_ == nullptr)
+        {
+            return 1.0F;
+        }
+        const auto& skeletonAsset = preparation
+            ? asset_->preparation
+            : asset_->combat;
+        const float height = skeletonAsset.skeletonData == nullptr
+            ? 0.0F
+            : skeletonAsset.skeletonData->getHeight();
+        return height > 0.0F
+            ? std::max(0.001F, targetHeight / height)
+            : 1.0F;
+    }
+
     void UnitAnimationInstance::update(const float deltaSeconds)
     {
         if (currentDrawable_ != nullptr)

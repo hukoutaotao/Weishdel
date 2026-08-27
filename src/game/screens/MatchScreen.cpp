@@ -10,6 +10,7 @@
 #include <limits>
 #include <sstream>
 #include <utility>
+#include <iostream>
 
 namespace autochess::game
 {
@@ -40,9 +41,11 @@ namespace autochess::game
     // 此构造函数建立选择流程共用的标题、提示和消息文本。
     MatchScreen::MatchScreen(
         const sf::Font& font,
-        const core::ConfigBundle& config)
+        const core::ConfigBundle& config,
+        std::filesystem::path dataDirectory)
         : font_(font),
-          config_(config)
+          config_(config),
+          animationRepository_(std::move(dataDirectory))
     {
         title_.setFont(font_);
         title_.setCharacterSize(42);
@@ -445,6 +448,7 @@ namespace autochess::game
     {
         const core::MatchPhase previousPhase = view_.phase;
         view_ = view;
+        syncAnimations(previousPhase);
         // 此代码块在离开准备阶段或阶段发生变化时清除瞬时拖拽预览。
         if (view_.phase != core::MatchPhase::Preparation
             || previousPhase != view_.phase)
@@ -475,6 +479,133 @@ namespace autochess::game
         }
     }
 
+    UnitAnimationInstance* MatchScreen::animationFor(
+        const core::OwnedUnitId unitId,
+        const core::UnitIdentity& identity)
+    {
+        if (unitId == core::InvalidOwnedUnitId || identity.unitId.empty())
+        {
+            return nullptr;
+        }
+        const auto existing = animations_.find(unitId);
+        if (existing != animations_.end())
+        {
+            return existing->second.get();
+        }
+
+        std::string errorMessage;
+        const UnitAnimationAssetPtr asset = animationRepository_.load(
+            identity.unitId,
+            errorMessage);
+        if (asset == nullptr)
+        {
+            std::cerr << "[SPINE] " << errorMessage << '\n';
+        }
+        auto instance = std::make_unique<UnitAnimationInstance>(asset);
+        UnitAnimationInstance* result = instance.get();
+        animations_.emplace(unitId, std::move(instance));
+        return result;
+    }
+
+    void MatchScreen::updateAnimations(const float deltaSeconds)
+    {
+        for (const auto& entry : animations_)
+        {
+            if (entry.second != nullptr && entry.second->valid())
+            {
+                entry.second->update(deltaSeconds);
+            }
+        }
+    }
+
+    void MatchScreen::syncAnimations(const core::MatchPhase previousPhase)
+    {
+        if (view_.phase == core::MatchPhase::Preparation)
+        {
+            animationCombatActive_ = false;
+            lastActionSequences_.clear();
+            lastBattlePositions_.clear();
+            battleSeen_.clear();
+            if (view_.self.has_value())
+            {
+                for (const core::OwnedUnit& unit : view_.self->activeUnits)
+                {
+                    if (auto* animation = animationFor(unit.id, unit.identity))
+                    {
+                        animation->play(UnitAnimationAction::Relax);
+                    }
+                }
+            }
+            for (const auto& unit : view_.opponent.deployments)
+            {
+                if (auto* animation = animationFor(unit.id, unit.identity))
+                {
+                    animation->play(UnitAnimationAction::Relax);
+                }
+            }
+            return;
+        }
+
+        if (view_.phase != core::MatchPhase::Combat)
+        {
+            return;
+        }
+
+        if (!animationCombatActive_ || previousPhase != core::MatchPhase::Combat)
+        {
+            animationCombatActive_ = true;
+            lastActionSequences_.clear();
+            lastBattlePositions_.clear();
+            battleSeen_.clear();
+        }
+
+        for (const core::BattleUnit& unit : view_.battleUnits)
+        {
+            UnitAnimationInstance* animation = animationFor(unit.id, unit.identity);
+            if (animation == nullptr || !animation->valid())
+            {
+                continue;
+            }
+
+            const bool firstSeen = !battleSeen_[unit.id];
+            const auto previousSequence = lastActionSequences_.find(unit.id);
+            const bool newBasicAction = previousSequence != lastActionSequences_.end()
+                && previousSequence->second != unit.basicActionSequence;
+            const auto previousPosition = lastBattlePositions_.find(unit.id);
+            const bool moved = previousPosition != lastBattlePositions_.end()
+                && !(previousPosition->second == unit.position);
+
+            if (unit.state == core::BattleUnitState::Dead)
+            {
+                if (animation->currentAction() != UnitAnimationAction::Die)
+                {
+                    animation->play(UnitAnimationAction::Die, true);
+                }
+            }
+            else if (firstSeen)
+            {
+                animation->play(UnitAnimationAction::Start, true);
+            }
+            else if ((animation->currentAction() == UnitAnimationAction::Start
+                      || animation->currentAction() == UnitAnimationAction::Attack)
+                     && !animation->currentAnimationComplete())
+            {
+                // 入场和攻击期间不被核心快照的移动状态打断。
+            }
+            else if (newBasicAction)
+            {
+                animation->play(UnitAnimationAction::Attack, true);
+            }
+            else if (moved || animation->currentAction() != UnitAnimationAction::Move)
+            {
+                animation->play(UnitAnimationAction::Move);
+            }
+
+            battleSeen_[unit.id] = true;
+            lastActionSequences_[unit.id] = unit.basicActionSequence;
+            lastBattlePositions_[unit.id] = unit.position;
+        }
+    }
     // 此函数使用颜色区分成功和失败的核心中文结果。
     void MatchScreen::showCommandResult(const core::CommandResult& result)
     {
@@ -1262,20 +1393,37 @@ namespace autochess::game
             target.draw(line);
         }
 
-        // 此代码块按快照顺序绘制单位圆形、等级和两条状态条。
+        // 此代码块绘制单位状态标记，并让死亡单位保留到死亡动画播放期间。
         for (const core::BattleUnit& unit : view_.battleUnits)
         {
-            if (unit.state != core::BattleUnitState::Alive)
+            if (unit.state == core::BattleUnitState::ReachedGuard)
             {
                 continue;
             }
+            const sf::Vector2f center =
+                boardTransform_.battlePositionToPixel(unit.position);
             UnitRenderer::drawBattle(
                 target,
                 font_,
                 unit,
-                boardTransform_.battlePositionToPixel(unit.position),
+                center,
                 radius,
                 unit.id == selectedBattleUnitId_);
+
+            // 此代码块优先绘制已同步的Spine角色，资源失败时保留上面的静态回退。
+            const auto animationIt = animations_.find(unit.id);
+            if (animationIt != animations_.end()
+                && animationIt->second != nullptr
+                && animationIt->second->valid())
+            {
+                animationIt->second->draw(
+                    target,
+                    center,
+                    animationIt->second->scaleForHeight(
+                        tileSize * 0.9F,
+                        false),
+                    unit.side == core::MapSide::A);
+            }
         }
     }
 
@@ -1358,6 +1506,21 @@ namespace autochess::game
                     unit->identity,
                     core::MapSide::A,
                     bounds);
+                const auto animationIt = animations_.find(unit->id);
+                if (animationIt != animations_.end()
+                    && animationIt->second != nullptr
+                    && animationIt->second->valid())
+                {
+                    animationIt->second->draw(
+                        target,
+                        sf::Vector2f(
+                            bounds.left + bounds.width / 2.0F,
+                            bounds.top + bounds.height / 2.0F),
+                        animationIt->second->scaleForHeight(
+                            bounds.height * 0.9F,
+                            true),
+                        true);
+                }
             }
         }
 
@@ -1371,13 +1534,30 @@ namespace autochess::game
             const core::OwnedUnit* unit = findActiveUnit(deployment.second);
             if (unit != nullptr)
             {
+                const sf::FloatRect bounds =
+                    boardTransform_.cellBounds(deployment.first);
                 UnitRenderer::draw(
                     target,
                     font_,
                     unitName(unit->identity.unitId),
                     unit->identity,
                     core::MapSide::A,
-                    boardTransform_.cellBounds(deployment.first));
+                    bounds);
+                const auto animationIt = animations_.find(unit->id);
+                if (animationIt != animations_.end()
+                    && animationIt->second != nullptr
+                    && animationIt->second->valid())
+                {
+                    animationIt->second->draw(
+                        target,
+                        sf::Vector2f(
+                            bounds.left + bounds.width / 2.0F,
+                            bounds.top + bounds.height / 2.0F),
+                        animationIt->second->scaleForHeight(
+                            bounds.height * 0.9F,
+                            true),
+                        true);
+                }
             }
         }
 
@@ -1385,13 +1565,30 @@ namespace autochess::game
         for (const core::PublicDeployedUnitView& unit
              : view_.opponent.deployments)
         {
+            const sf::FloatRect bounds =
+                boardTransform_.cellBounds(unit.position);
             UnitRenderer::draw(
                 target,
                 font_,
                 unitName(unit.identity.unitId),
                 unit.identity,
                 core::MapSide::B,
-                boardTransform_.cellBounds(unit.position));
+                bounds);
+            const auto animationIt = animations_.find(unit.id);
+            if (animationIt != animations_.end()
+                && animationIt->second != nullptr
+                && animationIt->second->valid())
+            {
+                animationIt->second->draw(
+                    target,
+                    sf::Vector2f(
+                        bounds.left + bounds.width / 2.0F,
+                        bounds.top + bounds.height / 2.0F),
+                    animationIt->second->scaleForHeight(
+                        bounds.height * 0.9F,
+                        true),
+                    false);
+            }
         }
 
         // 此代码块在拖拽期间绘制跟随鼠标的半透明单位标记。
