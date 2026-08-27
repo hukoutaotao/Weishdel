@@ -182,6 +182,13 @@ add_executable(
     # 将第七天窗口、资源和固定步长运行骨架编译进游戏目标。
     src/game/GameApp.cpp
     src/game/GameApp.hpp
+    # 将 Spine 3.8 资源仓库、动作识别和单位动画实例编译进表现层。
+    src/game/animation/UnitAnimationManifest.cpp
+    src/game/animation/UnitAnimationManifest.hpp
+    src/game/animation/SpineAssetRepository.cpp
+    src/game/animation/SpineAssetRepository.hpp
+    src/game/animation/UnitAnimationInstance.cpp
+    src/game/animation/UnitAnimationInstance.hpp
     # 将可执行文件目录和发布数据路径选择工具编译进游戏目标。
     src/game/RuntimePaths.cpp
     src/game/RuntimePaths.hpp
