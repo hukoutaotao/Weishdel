@@ -7,30 +7,40 @@
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/Text.hpp>
 #include <SFML/Window/Event.hpp>
+#include <SFML/Window/WindowStyle.hpp>
 
 #include <algorithm>
 #include <array>
 #include <filesystem>
 #include <iostream>
+#include <cmath>
 #include <utility>
 
 namespace autochess::game
 {
     namespace
     {
-        constexpr unsigned int WindowWidth = 1280;
-        constexpr unsigned int WindowHeight = 720;
+        constexpr unsigned int LogicalWidth = 1280;
+        constexpr unsigned int LogicalHeight = 720;
+        constexpr unsigned int WindowWidth = LogicalWidth * 2;
+        constexpr unsigned int WindowHeight = LogicalHeight * 2;
         constexpr float FixedStepSeconds = 1.0F / 60.0F;
         constexpr float MaximumFrameSeconds = 0.25F;
     }
 
-    // 此构造函数创建固定尺寸窗口并限制空闲渲染帧率。
+    // 此构造函数创建放大一倍的窗口，但保留页面使用的逻辑坐标系。
     GameApp::GameApp(std::filesystem::path dataDirectory)
         : dataDirectory_(std::move(dataDirectory)),
           window_(
               sf::VideoMode(WindowWidth, WindowHeight),
-              "AutoChess")
+              "AutoChess"),
+          logicalView_(sf::FloatRect(
+              0.0F,
+              0.0F,
+              static_cast<float>(LogicalWidth),
+              static_cast<float>(LogicalHeight)))
     {
+        window_.setView(logicalView_);
         window_.setFramerateLimit(60);
     }
 
@@ -131,10 +141,43 @@ namespace autochess::game
             return;
         }
 
-        // 此代码块把非系统事件交给唯一当前页面并立即消费其动作。
+        // 此代码块保持逻辑视图覆盖整个放大后的窗口，避免调整窗口尺寸后
+        // 页面仍按旧默认视图绘制。
+        if (event.type == sf::Event::Resized)
+        {
+            window_.setView(logicalView_);
+        }
+
+        // 此代码块把物理像素鼠标坐标转换回 1280×720 逻辑坐标，
+        // 再交给页面处理，保证放大窗口不影响按钮、拖拽和选中操作。
         if (screen_ != nullptr)
         {
-            screen_->handleEvent(event);
+            sf::Event screenEvent = event;
+            const auto toLogical = [this](const sf::Vector2i pixel) {
+                return window_.mapPixelToCoords(pixel, logicalView_);
+            };
+            if (event.type == sf::Event::MouseButtonPressed
+                || event.type == sf::Event::MouseButtonReleased)
+            {
+                const sf::Vector2f logical = toLogical(sf::Vector2i(
+                    event.mouseButton.x,
+                    event.mouseButton.y));
+                screenEvent.mouseButton.x = static_cast<int>(
+                    std::lround(logical.x));
+                screenEvent.mouseButton.y = static_cast<int>(
+                    std::lround(logical.y));
+            }
+            else if (event.type == sf::Event::MouseMoved)
+            {
+                const sf::Vector2f logical = toLogical(sf::Vector2i(
+                    event.mouseMove.x,
+                    event.mouseMove.y));
+                screenEvent.mouseMove.x = static_cast<int>(
+                    std::lround(logical.x));
+                screenEvent.mouseMove.y = static_cast<int>(
+                    std::lround(logical.y));
+            }
+            screen_->handleEvent(screenEvent);
             processUiAction();
         }
     }

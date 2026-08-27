@@ -8,6 +8,7 @@
 
 #include <SFML/Graphics/Font.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/View.hpp>
 #include <SFML/System/Clock.hpp>
 
 #include <cstdint>
@@ -68,6 +69,8 @@ namespace autochess::game
         // 此成员保存入口已经按发布优先级选定的正式数据目录。
         std::filesystem::path dataDirectory_;
         sf::RenderWindow window_;
+        // 所有页面继续使用 1280×720 逻辑坐标，由窗口视图统一放大显示。
+        sf::View logicalView_;
         sf::Font font_;
         core::ConfigBundle config_;
         std::unique_ptr<core::Match> match_;
