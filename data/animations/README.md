@@ -7,4 +7,4 @@
 
 `.atlas` 的第一页名称必须与实际 PNG 文件名一致。资源导入时会直接将老师提供的素材文件改名为项目 `unit_id`，并同步修改 atlas 第一行的 PNG 引用；不会额外生成运行时映射表。
 
-当前暂存素材位于 `temp/wang` 和 `temp/wisdel`，待确认它们分别对应哪个正式 `unit_id` 后导入。
+已导入的老师提供素材：`temp/wang` → `arcanist`（奥术师），`temp/wisdel` → `ranger`（游侠）。原始素材仍保留在 `temp/`，正式运行资源位于对应的 `units/<unit_id>/` 目录。
