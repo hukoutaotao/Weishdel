@@ -135,6 +135,48 @@ target_compile_options(
     /utf-8
 )
 
+# Spine 3.8 runtime is built as a separate static library so the game target
+# only consumes the stable C++/SFML adapter surface.
+set(SPINE_RUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/spine-runtimes-3.8")
+file(GLOB SPINE_CPP_SOURCES CONFIGURE_DEPENDS
+    "${SPINE_RUNTIME_ROOT}/spine-cpp/spine-cpp/src/spine/*.cpp"
+)
+
+add_library(
+    AutoChessSpine
+    STATIC
+    ${SPINE_CPP_SOURCES}
+    "${SPINE_RUNTIME_ROOT}/spine-sfml/cpp/src/spine/spine-sfml.cpp"
+)
+
+target_include_directories(
+    AutoChessSpine
+    PUBLIC
+    "${SPINE_RUNTIME_ROOT}/spine-cpp/spine-cpp/include"
+    "${SPINE_RUNTIME_ROOT}/spine-sfml/cpp/src"
+)
+
+target_link_libraries(
+    AutoChessSpine
+    PUBLIC
+    sfml-graphics
+    sfml-window
+    sfml-system
+)
+
+target_compile_options(
+    AutoChessSpine
+    PRIVATE
+    /W3
+    /wd4100
+    /wd4127
+    /wd4244
+    /wd4267
+    /wd4305
+    /wd4458
+    /wd4706
+    /utf-8
+)
 add_executable(
     AutoChessGame
     # 将第七天窗口、资源和固定步长运行骨架编译进游戏目标。
@@ -171,6 +213,7 @@ target_link_libraries(
     AutoChessGame
     PRIVATE
     AutoChessCore
+    AutoChessSpine
     sfml-graphics
     sfml-window
     sfml-system
