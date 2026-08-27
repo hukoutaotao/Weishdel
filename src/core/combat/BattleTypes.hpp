@@ -84,6 +84,8 @@ namespace autochess::core
 
         double health = 0.0;
         double basicActionElapsed = 0.0;
+        // 此序号表示已成功完成一次普通攻击或治疗，供表现层可靠触发动作。
+        std::uint64_t basicActionSequence = 0;
         std::optional<BattleUnitId> targetId;
         std::map<BattleUnitId, std::uint64_t> firstInRangeFrame;
         BattleUnitState state = BattleUnitState::Alive;

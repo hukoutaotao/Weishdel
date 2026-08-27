@@ -372,6 +372,7 @@ namespace autochess::core
                 damage,
                 healing});
             actor.basicActionElapsed = 0.0;
+            ++actor.basicActionSequence;
         }
 
         // 此代码块分别累计同帧伤害和治疗以消除单位遍历顺序影响。
