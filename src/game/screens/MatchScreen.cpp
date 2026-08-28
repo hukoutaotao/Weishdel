@@ -16,6 +16,8 @@ namespace autochess::game
 {
     namespace
     {
+        constexpr float UnitAnimationHeightRatio = 0.68F;
+
         // 此函数把核心 UTF-8 文本安全转换为 SFML Unicode 字符串。
         sf::String fromUtf8(const std::string& text)
         {
@@ -1450,7 +1452,7 @@ namespace autochess::game
                 animationIt->second->draw(
                     target,
                     center,
-                    animationIt->second->scaleForHeight(tileSize * 0.68F),
+                    animationIt->second->scaleForHeight(tileSize * UnitAnimationHeightRatio),
                     unit.side == core::MapSide::A);
             }
         }
@@ -1548,7 +1550,7 @@ namespace autochess::game
                         sf::Vector2f(
                             bounds.left + bounds.width / 2.0F,
                             bounds.top + bounds.height / 2.0F),
-                        animationIt->second->scaleForHeight(bounds.height * 0.72F),
+                        animationIt->second->scaleForHeight(bounds.height * UnitAnimationHeightRatio),
                         true);
                 }
             }
@@ -1586,7 +1588,7 @@ namespace autochess::game
                         sf::Vector2f(
                             bounds.left + bounds.width / 2.0F,
                             bounds.top + bounds.height / 2.0F),
-                        animationIt->second->scaleForHeight(bounds.height * 0.72F),
+                        animationIt->second->scaleForHeight(bounds.height * UnitAnimationHeightRatio),
                         true);
                 }
             }
@@ -1618,7 +1620,7 @@ namespace autochess::game
                     sf::Vector2f(
                         bounds.left + bounds.width / 2.0F,
                         bounds.top + bounds.height / 2.0F),
-                    animationIt->second->scaleForHeight(bounds.height * 0.72F),
+                    animationIt->second->scaleForHeight(bounds.height * UnitAnimationHeightRatio),
                     false);
             }
         }

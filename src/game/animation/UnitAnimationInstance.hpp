@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace autochess::game
 {
@@ -40,10 +41,20 @@ namespace autochess::game
         float scaleForHeight(float targetHeight) const noexcept;
 
     private:
+        struct VisualMetrics
+        {
+            float anchorX = 0.0F;
+            float anchorY = 0.0F;
+            float referenceHeight = 0.0F;
+            bool valid = false;
+        };
+
         UnitAnimationAssetPtr asset_;
         std::unique_ptr<spine::SkeletonDrawable> preparationDrawable_;
         std::unique_ptr<spine::SkeletonDrawable> combatDrawable_;
         spine::SkeletonDrawable* currentDrawable_ = nullptr;
+        VisualMetrics preparationMetrics_;
+        VisualMetrics combatMetrics_;
         UnitAnimationAction currentAction_ = UnitAnimationAction::Relax;
         std::string currentClip_;
 
@@ -51,6 +62,10 @@ namespace autochess::game
             const UnitAnimationSkeletonAsset& asset,
             UnitAnimationAction action);
         static spine::String spineString(const std::string& value);
+        static VisualMetrics calculateVisualMetrics(
+            const UnitAnimationSkeletonAsset& asset,
+            const std::vector<std::string>& preferredClips);
+        const VisualMetrics& currentVisualMetrics() const noexcept;
         bool playClip(
             spine::SkeletonDrawable& drawable,
             const UnitAnimationSkeletonAsset& asset,

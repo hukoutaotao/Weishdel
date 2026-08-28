@@ -2,13 +2,36 @@
 
 #include <spine/Animation.h>
 #include <spine/AnimationState.h>
+#include <spine/Bone.h>
+#include <spine/MixBlend.h>
+#include <spine/MixDirection.h>
 #include <spine/Skeleton.h>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace autochess::game
 {
+    namespace
+    {
+        constexpr int AnimationBoundsSampleCount = 16;
+
+        bool validBounds(
+            const float x,
+            const float y,
+            const float width,
+            const float height) noexcept
+        {
+            return std::isfinite(x)
+                && std::isfinite(y)
+                && std::isfinite(width)
+                && std::isfinite(height)
+                && width > 0.001F
+                && height > 0.001F;
+        }
+    }
+
     UnitAnimationInstance::UnitAnimationInstance(UnitAnimationAssetPtr asset)
         : asset_(std::move(asset))
     {
@@ -16,6 +39,21 @@ namespace autochess::game
         {
             return;
         }
+        preparationMetrics_ = calculateVisualMetrics(
+            asset_->preparation,
+            {
+                asset_->preparation.manifest.relax,
+                asset_->preparation.manifest.move
+            });
+        combatMetrics_ = calculateVisualMetrics(
+            asset_->combat,
+            {
+                asset_->combat.manifest.attack,
+                asset_->combat.manifest.start,
+                asset_->combat.manifest.attackBegin,
+                asset_->combat.manifest.attackEnd,
+                asset_->combat.manifest.die
+            });
         preparationDrawable_ = std::make_unique<spine::SkeletonDrawable>(
             asset_->preparation.skeletonData.get());
         combatDrawable_ = std::make_unique<spine::SkeletonDrawable>(
@@ -59,6 +97,102 @@ namespace autochess::game
         const std::string& value)
     {
         return spine::String(value.c_str());
+    }
+
+    UnitAnimationInstance::VisualMetrics
+    UnitAnimationInstance::calculateVisualMetrics(
+        const UnitAnimationSkeletonAsset& asset,
+        const std::vector<std::string>& preferredClips)
+    {
+        VisualMetrics metrics;
+        if (asset.skeletonData == nullptr)
+        {
+            return metrics;
+        }
+
+        // spine-sfml 全局使用向下为正的 Y 轴；测量必须采用同一坐标系。
+        spine::Bone::setYDown(true);
+        spine::Skeleton skeleton(asset.skeletonData.get());
+        spine::Vector<float> vertexBuffer;
+        skeleton.setPosition(0.0F, 0.0F);
+        skeleton.setScaleX(1.0F);
+        skeleton.setScaleY(1.0F);
+
+        const auto samplePose = [&](spine::Animation* animation, const float time)
+        {
+            skeleton.setToSetupPose();
+            if (animation != nullptr)
+            {
+                animation->apply(
+                    skeleton,
+                    0.0F,
+                    time,
+                    false,
+                    nullptr,
+                    1.0F,
+                    spine::MixBlend_Replace,
+                    spine::MixDirection_In);
+            }
+            skeleton.updateWorldTransform();
+
+            float x = 0.0F;
+            float y = 0.0F;
+            float width = 0.0F;
+            float height = 0.0F;
+            skeleton.getBounds(x, y, width, height, vertexBuffer);
+            if (!validBounds(x, y, width, height))
+            {
+                return;
+            }
+
+            // 锚点只取首个可靠姿态，后续动作不会让角色整体在格子中抖动；
+            // 缩放高度则取所有采样姿态的最大值，避免切换 skeleton 后忽大忽小。
+            if (!metrics.valid)
+            {
+                metrics.anchorX = x + width * 0.5F;
+                metrics.anchorY = y + height * 0.5F;
+                metrics.valid = true;
+            }
+            metrics.referenceHeight = std::max(metrics.referenceHeight, height);
+        };
+
+        bool sampledAnimation = false;
+        for (const std::string& clip : preferredClips)
+        {
+            if (clip.empty())
+            {
+                continue;
+            }
+            spine::Animation* animation = asset.skeletonData->findAnimation(
+                spineString(clip));
+            if (animation == nullptr)
+            {
+                continue;
+            }
+            sampledAnimation = true;
+            const float duration = std::max(0.0F, animation->getDuration());
+            for (int sample = 0; sample <= AnimationBoundsSampleCount; ++sample)
+            {
+                const float time = duration
+                    * static_cast<float>(sample)
+                    / static_cast<float>(AnimationBoundsSampleCount);
+                samplePose(animation, time);
+            }
+        }
+
+        if (!sampledAnimation || !metrics.valid)
+        {
+            samplePose(nullptr, 0.0F);
+        }
+        return metrics;
+    }
+
+    const UnitAnimationInstance::VisualMetrics&
+    UnitAnimationInstance::currentVisualMetrics() const noexcept
+    {
+        return currentDrawable_ == preparationDrawable_.get()
+            ? preparationMetrics_
+            : combatMetrics_;
     }
 
     bool UnitAnimationInstance::play(
@@ -158,22 +292,18 @@ namespace autochess::game
             return 1.0F;
         }
 
-        // Move 使用准备 skeleton，Start/Attack/Die 使用战斗 skeleton。
-        // 必须依据当前 drawable 取高度，不能让调用者按页面阶段猜测，
-        // 否则战斗开始后切回 move 会使用错误的 skeleton 高度缩放。
-        const auto& skeletonAsset = currentDrawable_ == preparationDrawable_.get()
-            ? asset_->preparation
-            : asset_->combat;
-        const float height = skeletonAsset.skeletonData == nullptr
-            ? 0.0F
-            : skeletonAsset.skeletonData->getHeight();
-        if (height <= 0.0F || targetHeight <= 0.0F)
+        const VisualMetrics& metrics = currentVisualMetrics();
+        if (!metrics.valid
+            || metrics.referenceHeight <= 0.0F
+            || targetHeight <= 0.0F)
         {
-            // 无效高度时隐藏式回退到一个保守比例，避免原始 Spine 尺寸
-            // 把人物放大到棋盘和窗口之外。
+            // 无法取得可见附件边界时使用保守比例，避免异常素材撑满窗口。
             return 0.01F;
         }
-        return std::clamp(targetHeight / height, 0.001F, 1.0F);
+        return std::clamp(
+            targetHeight / metrics.referenceHeight,
+            0.001F,
+            4.0F);
     }
 
     void UnitAnimationInstance::update(const float deltaSeconds)
@@ -194,11 +324,24 @@ namespace autochess::game
         {
             return;
         }
+
         const float safeScale = std::max(0.001F, scale);
-        currentDrawable_->skeleton->setPosition(position.x, position.y);
-        currentDrawable_->skeleton->setScaleX(
-            (faceRight ? 1.0F : -1.0F) * safeScale);
+        const float horizontalScale = (faceRight ? 1.0F : -1.0F) * safeScale;
+        const VisualMetrics& metrics = currentVisualMetrics();
+        const float anchorX = metrics.valid ? metrics.anchorX : 0.0F;
+        const float anchorY = metrics.valid ? metrics.anchorY : 0.0F;
+
+        // 使用固定的可见姿态中心作锚点，而不是假定各素材的 skeleton 原点
+        // 都位于角色中心。翻转时水平锚点也必须同步翻转。
+        currentDrawable_->skeleton->setScaleX(horizontalScale);
         currentDrawable_->skeleton->setScaleY(safeScale);
+        currentDrawable_->skeleton->setPosition(
+            position.x - anchorX * horizontalScale,
+            position.y - anchorY * safeScale);
+
+        // SkeletonDrawable::draw 不会刷新骨骼世界变换，绘制前必须更新，
+        // 否则位置和缩放要到下一帧才生效，首次显示时可能仍在窗口外。
+        currentDrawable_->skeleton->updateWorldTransform();
         target.draw(*currentDrawable_);
     }
 }
