@@ -418,6 +418,11 @@ namespace autochess::game
             && settlementHoldFrames_ > 0)
         {
             --settlementHoldFrames_;
+            // 这里只冻结核心结算时间，Spine 仍需逐帧更新，避免死亡时全场定格。
+            if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
+            {
+                matchScreen->updateAnimations(FixedStepSeconds);
+            }
             return;
         }
 

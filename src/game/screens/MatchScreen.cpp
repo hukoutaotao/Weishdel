@@ -450,7 +450,7 @@ namespace autochess::game
     {
         const core::MatchPhase previousPhase = view_.phase;
         view_ = view;
-        syncAnimations(previousPhase);
+        syncAnimations();
         // 此代码块在离开准备阶段或阶段发生变化时清除瞬时拖拽预览。
         if (view_.phase != core::MatchPhase::Preparation
             || previousPhase != view_.phase)
@@ -534,7 +534,7 @@ namespace autochess::game
         }
     }
 
-    void MatchScreen::syncAnimations(const core::MatchPhase previousPhase)
+    void MatchScreen::syncAnimations()
     {
         if (view_.phase == core::MatchPhase::Preparation)
         {
@@ -542,6 +542,7 @@ namespace autochess::game
             lastActionSequences_.clear();
             lastBattlePositions_.clear();
             battleSeen_.clear();
+            deathAnimationsFinished_.clear();
             if (view_.self.has_value())
             {
                 for (const core::OwnedUnit& unit : view_.self->activeUnits)
@@ -568,17 +569,20 @@ namespace autochess::game
             return;
         }
 
-        if (view_.phase != core::MatchPhase::Combat)
+        if (view_.phase != core::MatchPhase::Combat
+            && view_.phase != core::MatchPhase::RoundSettlement)
         {
             return;
         }
 
-        if (!animationCombatActive_ || previousPhase != core::MatchPhase::Combat)
+        // 回合结算仍需继续同步最后一批死亡动画；进入结算时不能清空状态。
+        if (!animationCombatActive_)
         {
             animationCombatActive_ = true;
             lastActionSequences_.clear();
             lastBattlePositions_.clear();
             battleSeen_.clear();
+            deathAnimationsFinished_.clear();
         }
 
         for (const core::BattleUnit& unit : view_.battleUnits)
@@ -590,6 +594,32 @@ namespace autochess::game
             const AnimationUnitKey animationKey{unit.side, animationId};
             UnitAnimationInstance* animation =
                 animationFor(unit.side, animationId, unit.identity);
+
+            // 死亡动画由每个单位独立推进。播放完成后立即标记为退场；
+            // 素材缺失时直接退场，避免静态回退图永久留在棋盘上。
+            if (unit.state == core::BattleUnitState::Dead)
+            {
+                bool& finished = deathAnimationsFinished_[animationKey];
+                if (finished)
+                {
+                    continue;
+                }
+                if (animation == nullptr || !animation->valid())
+                {
+                    finished = true;
+                    continue;
+                }
+                if (animation->currentAction() != UnitAnimationAction::Die)
+                {
+                    finished = !animation->play(UnitAnimationAction::Die, true);
+                }
+                else if (animation->currentAnimationComplete())
+                {
+                    finished = true;
+                }
+                continue;
+            }
+
             if (animation == nullptr || !animation->valid())
             {
                 continue;
@@ -603,14 +633,7 @@ namespace autochess::game
             const bool moved = previousPosition != lastBattlePositions_.end()
                 && !(previousPosition->second == unit.position);
 
-            if (unit.state == core::BattleUnitState::Dead)
-            {
-                if (animation->currentAction() != UnitAnimationAction::Die)
-                {
-                    animation->play(UnitAnimationAction::Die, true);
-                }
-            }
-            else if (firstSeen)
+            if (firstSeen)
             {
                 animation->play(UnitAnimationAction::Start, true);
             }
@@ -1428,6 +1451,20 @@ namespace autochess::game
             {
                 continue;
             }
+
+            const core::OwnedUnitId animationId =
+                unit.ownedUnitId != core::InvalidOwnedUnitId
+                ? unit.ownedUnitId
+                : static_cast<core::OwnedUnitId>(unit.id);
+            const AnimationUnitKey animationKey{unit.side, animationId};
+            const auto deathState = deathAnimationsFinished_.find(animationKey);
+            if (unit.state == core::BattleUnitState::Dead
+                && deathState != deathAnimationsFinished_.end()
+                && deathState->second)
+            {
+                continue;
+            }
+
             const sf::Vector2f center =
                 boardTransform_.battlePositionToPixel(unit.position);
             UnitRenderer::drawBattle(
@@ -1439,11 +1476,6 @@ namespace autochess::game
                 unit.id == selectedBattleUnitId_);
 
             // 此代码块优先绘制已同步的Spine角色，资源失败时保留上面的静态回退。
-            const core::OwnedUnitId animationId =
-                unit.ownedUnitId != core::InvalidOwnedUnitId
-                ? unit.ownedUnitId
-                : static_cast<core::OwnedUnitId>(unit.id);
-            const AnimationUnitKey animationKey{unit.side, animationId};
             const auto animationIt = animations_.find(animationKey);
             if (animationIt != animations_.end()
                 && animationIt->second != nullptr
