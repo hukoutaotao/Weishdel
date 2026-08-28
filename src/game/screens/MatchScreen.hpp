@@ -74,6 +74,24 @@ namespace autochess::game
             sf::Vector2f mousePosition;
         };
 
+        // A、B 双方的 OwnedUnitId 会分别从 1 开始，必须把阵营纳入动画键，
+        // 否则同编号的双方单位会错误共享同一个角色实例和动作状态。
+        struct AnimationUnitKey
+        {
+            core::MapSide side = core::MapSide::Unknown;
+            core::OwnedUnitId unitId = core::InvalidOwnedUnitId;
+
+            bool operator==(const AnimationUnitKey& other) const noexcept
+            {
+                return side == other.side && unitId == other.unitId;
+            }
+        };
+
+        struct AnimationUnitKeyHash
+        {
+            std::size_t operator()(const AnimationUnitKey& key) const noexcept;
+        };
+
         // 此函数为当前核心阶段重建标题、说明和全部选项按钮。
         void rebuildChoices();
 
@@ -122,6 +140,7 @@ namespace autochess::game
 
         // 此函数按单位 ID 获取或创建共享资源对应的独立 Spine 实例。
         UnitAnimationInstance* animationFor(
+            core::MapSide side,
             core::OwnedUnitId unitId,
             const core::UnitIdentity& identity);
 
@@ -173,10 +192,10 @@ namespace autochess::game
         // 此字段防止核心返回结果前重复排队同一个技能命令。
         bool skillCommandPending_ = false;
         SpineAssetRepository animationRepository_;
-        std::unordered_map<core::OwnedUnitId, std::unique_ptr<UnitAnimationInstance>> animations_;
-        std::unordered_map<core::OwnedUnitId, std::uint64_t> lastActionSequences_;
-        std::unordered_map<core::OwnedUnitId, core::BattlePosition> lastBattlePositions_;
-        std::unordered_map<core::OwnedUnitId, bool> battleSeen_;
+        std::unordered_map<AnimationUnitKey, std::unique_ptr<UnitAnimationInstance>, AnimationUnitKeyHash> animations_;
+        std::unordered_map<AnimationUnitKey, std::uint64_t, AnimationUnitKeyHash> lastActionSequences_;
+        std::unordered_map<AnimationUnitKey, core::BattlePosition, AnimationUnitKeyHash> lastBattlePositions_;
+        std::unordered_map<AnimationUnitKey, bool, AnimationUnitKeyHash> battleSeen_;
         bool animationCombatActive_ = false;
     };
 }

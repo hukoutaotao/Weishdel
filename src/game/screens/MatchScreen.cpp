@@ -479,15 +479,29 @@ namespace autochess::game
         }
     }
 
+    std::size_t MatchScreen::AnimationUnitKeyHash::operator()(
+        const AnimationUnitKey& key) const noexcept
+    {
+        const std::size_t idHash = std::hash<core::OwnedUnitId>{}(key.unitId);
+        const std::size_t sideHash = std::hash<int>{}(
+            static_cast<int>(key.side));
+        return idHash ^ (sideHash + 0x9e3779b9U + (idHash << 6U)
+                         + (idHash >> 2U));
+    }
+
     UnitAnimationInstance* MatchScreen::animationFor(
+        const core::MapSide side,
         const core::OwnedUnitId unitId,
         const core::UnitIdentity& identity)
     {
-        if (unitId == core::InvalidOwnedUnitId || identity.unitId.empty())
+        if (side == core::MapSide::Unknown
+            || unitId == core::InvalidOwnedUnitId
+            || identity.unitId.empty())
         {
             return nullptr;
         }
-        const auto existing = animations_.find(unitId);
+        const AnimationUnitKey key{side, unitId};
+        const auto existing = animations_.find(key);
         if (existing != animations_.end())
         {
             return existing->second.get();
@@ -503,7 +517,7 @@ namespace autochess::game
         }
         auto instance = std::make_unique<UnitAnimationInstance>(asset);
         UnitAnimationInstance* result = instance.get();
-        animations_.emplace(unitId, std::move(instance));
+        animations_.emplace(key, std::move(instance));
         return result;
     }
 
@@ -530,7 +544,10 @@ namespace autochess::game
             {
                 for (const core::OwnedUnit& unit : view_.self->activeUnits)
                 {
-                    if (auto* animation = animationFor(unit.id, unit.identity))
+                    if (auto* animation = animationFor(
+                            unit.ownerSide,
+                            unit.id,
+                            unit.identity))
                     {
                         animation->play(UnitAnimationAction::Relax);
                     }
@@ -538,7 +555,10 @@ namespace autochess::game
             }
             for (const auto& unit : view_.opponent.deployments)
             {
-                if (auto* animation = animationFor(unit.id, unit.identity))
+                if (auto* animation = animationFor(
+                        view_.opponent.side,
+                        unit.id,
+                        unit.identity))
                 {
                     animation->play(UnitAnimationAction::Relax);
                 }
@@ -565,18 +585,19 @@ namespace autochess::game
                 unit.ownedUnitId != core::InvalidOwnedUnitId
                 ? unit.ownedUnitId
                 : static_cast<core::OwnedUnitId>(unit.id);
+            const AnimationUnitKey animationKey{unit.side, animationId};
             UnitAnimationInstance* animation =
-                animationFor(animationId, unit.identity);
+                animationFor(unit.side, animationId, unit.identity);
             if (animation == nullptr || !animation->valid())
             {
                 continue;
             }
 
-            const bool firstSeen = !battleSeen_[animationId];
-            const auto previousSequence = lastActionSequences_.find(animationId);
+            const bool firstSeen = !battleSeen_[animationKey];
+            const auto previousSequence = lastActionSequences_.find(animationKey);
             const bool newBasicAction = previousSequence != lastActionSequences_.end()
                 && previousSequence->second != unit.basicActionSequence;
-            const auto previousPosition = lastBattlePositions_.find(animationId);
+            const auto previousPosition = lastBattlePositions_.find(animationKey);
             const bool moved = previousPosition != lastBattlePositions_.end()
                 && !(previousPosition->second == unit.position);
 
@@ -606,9 +627,9 @@ namespace autochess::game
                 animation->play(UnitAnimationAction::Move);
             }
 
-            battleSeen_[animationId] = true;
-            lastActionSequences_[animationId] = unit.basicActionSequence;
-            lastBattlePositions_[animationId] = unit.position;
+            battleSeen_[animationKey] = true;
+            lastActionSequences_[animationKey] = unit.basicActionSequence;
+            lastBattlePositions_[animationKey] = unit.position;
         }
     }
     // 此函数使用颜色区分成功和失败的核心中文结果。
@@ -1420,7 +1441,8 @@ namespace autochess::game
                 unit.ownedUnitId != core::InvalidOwnedUnitId
                 ? unit.ownedUnitId
                 : static_cast<core::OwnedUnitId>(unit.id);
-            const auto animationIt = animations_.find(animationId);
+            const AnimationUnitKey animationKey{unit.side, animationId};
+            const auto animationIt = animations_.find(animationKey);
             if (animationIt != animations_.end()
                 && animationIt->second != nullptr
                 && animationIt->second->valid())
@@ -1513,7 +1535,10 @@ namespace autochess::game
                     unit->identity,
                     core::MapSide::A,
                     bounds);
-                const auto animationIt = animations_.find(unit->id);
+                const AnimationUnitKey animationKey{
+                    unit->ownerSide,
+                    unit->id};
+                const auto animationIt = animations_.find(animationKey);
                 if (animationIt != animations_.end()
                     && animationIt->second != nullptr
                     && animationIt->second->valid())
@@ -1548,7 +1573,10 @@ namespace autochess::game
                     unit->identity,
                     core::MapSide::A,
                     bounds);
-                const auto animationIt = animations_.find(unit->id);
+                const AnimationUnitKey animationKey{
+                    unit->ownerSide,
+                    unit->id};
+                const auto animationIt = animations_.find(animationKey);
                 if (animationIt != animations_.end()
                     && animationIt->second != nullptr
                     && animationIt->second->valid())
@@ -1577,7 +1605,10 @@ namespace autochess::game
                 unit.identity,
                 core::MapSide::B,
                 bounds);
-            const auto animationIt = animations_.find(unit.id);
+            const AnimationUnitKey animationKey{
+                view_.opponent.side,
+                unit.id};
+            const auto animationIt = animations_.find(animationKey);
             if (animationIt != animations_.end()
                 && animationIt->second != nullptr
                 && animationIt->second->valid())
@@ -1587,9 +1618,7 @@ namespace autochess::game
                     sf::Vector2f(
                         bounds.left + bounds.width / 2.0F,
                         bounds.top + bounds.height / 2.0F),
-                    animationIt->second->scaleForHeight(
-                        bounds.height * 0.9F,
-                        true),
+                    animationIt->second->scaleForHeight(bounds.height * 0.72F),
                     false);
             }
         }
