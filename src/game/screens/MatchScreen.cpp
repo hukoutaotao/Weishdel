@@ -16,7 +16,7 @@ namespace autochess::game
 {
     namespace
     {
-        constexpr float UnitAnimationHeightRatio = 0.68F;
+        constexpr float UnitAnimationHeightRatio = 1.36F;
 
         // 此函数把核心 UTF-8 文本安全转换为 SFML Unicode 字符串。
         sf::String fromUtf8(const std::string& text)
