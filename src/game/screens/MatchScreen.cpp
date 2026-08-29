@@ -637,17 +637,27 @@ namespace autochess::game
             {
                 animation->play(UnitAnimationAction::Start, true);
             }
-            else if ((animation->currentAction() == UnitAnimationAction::Start
-                      || animation->currentAction() == UnitAnimationAction::Attack)
+            else if (animation->currentAction() == UnitAnimationAction::Start
                      && !animation->currentAnimationComplete())
             {
-                // 入场和攻击期间不被核心快照的移动状态打断。
+                // 入场动作保持完整，避免战斗开始时立刻被位置变化打断。
             }
             else if (newBasicAction)
             {
                 animation->play(UnitAnimationAction::Attack, true);
             }
-            else if (moved || animation->currentAction() != UnitAnimationAction::Move)
+            else if (moved)
+            {
+                // 核心已经恢复移动时立即切回 Move，不再等待较长的攻击
+                // 序列结束，避免同帧击杀后多个存活角色一起视觉定格。
+                animation->play(UnitAnimationAction::Move);
+            }
+            else if (animation->currentAction() == UnitAnimationAction::Attack
+                     && !animation->currentAnimationComplete())
+            {
+                // 原地交战时仍完整播放攻击动作。
+            }
+            else if (animation->currentAction() != UnitAnimationAction::Move)
             {
                 animation->play(UnitAnimationAction::Move);
             }
