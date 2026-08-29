@@ -25,16 +25,33 @@ namespace autochess::game
             return result;
         }
 
-        // 素材中 v/t 是导出后缀，去掉后仍保留 attack_a 等语义后缀。
+        // 素材中部分动作带单字符 v/t 导出后缀，例如 MoveT、DieV。
+        // 只有去除后能形成已知动作名时才剥离，不能误伤 Start 或
+        // Skill_1_Start 这类名称本身就以 t 结尾的动作。
         std::string normalize(const std::string& value)
         {
             std::string result = lowerAscii(value);
-            if (result.size() > 1
-                && (result.back() == 'v' || result.back() == 't'))
+            if (result.size() <= 1
+                || (result.back() != 'v' && result.back() != 't'))
             {
-                result.pop_back();
+                return result;
             }
-            return result;
+
+            const std::string candidate = result.substr(0, result.size() - 1);
+            static const std::vector<std::string> actionPrefixes{
+                "relax", "move", "start", "attack", "die",
+                "interact", "sit", "sleep"};
+            const bool knownAction = std::any_of(
+                actionPrefixes.begin(),
+                actionPrefixes.end(),
+                [&candidate](const std::string& prefix)
+                {
+                    return candidate == prefix
+                        || (candidate.size() > prefix.size()
+                            && candidate.compare(0, prefix.size(), prefix) == 0
+                            && candidate[prefix.size()] == '_');
+                });
+            return knownAction ? candidate : result;
         }
 
         bool startsWith(const std::string& value, const std::string& prefix)
@@ -86,6 +103,9 @@ namespace autochess::game
         int attackBeginRank = 100;
         int attackEndRank = 100;
         int dieRank = 100;
+        std::string skillAttackBegin;
+        std::string skillAttackLoop;
+        std::string skillAttackEnd;
 
         for (std::size_t index = 0;
              index < skeletonData.getAnimations().size();
@@ -151,6 +171,30 @@ namespace autochess::game
                     attackRank,
                     originalName,
                     variantRank(normalizedName, "attack"));
+            }
+            else if (normalizedName == "skill_1_start")
+            {
+                skillAttackBegin = originalName;
+            }
+            else if (normalizedName == "skill_1_loop")
+            {
+                skillAttackLoop = originalName;
+            }
+            else if (normalizedName == "skill_1_end")
+            {
+                skillAttackEnd = originalName;
+            }
+        }
+
+        // 少数老师素材没有 Attack 命名，而以 Skill_1_Start/Loop/End
+        // 表示同一套完整攻击动作。只在没有标准 Attack 时启用通用回退。
+        if (manifest.attack.empty() && !skillAttackLoop.empty())
+        {
+            manifest.attack = skillAttackLoop;
+            if (!skillAttackBegin.empty() && !skillAttackEnd.empty())
+            {
+                manifest.attackBegin = skillAttackBegin;
+                manifest.attackEnd = skillAttackEnd;
             }
         }
 
