@@ -35,6 +35,7 @@ namespace autochess::game
             bool faceRight) const;
 
         bool valid() const noexcept { return asset_ != nullptr; }
+        const std::string& unitId() const noexcept;
         UnitAnimationAction currentAction() const noexcept { return currentAction_; }
         const std::string& currentClip() const noexcept { return currentClip_; }
         bool currentAnimationComplete() const noexcept;

@@ -144,6 +144,9 @@ namespace autochess::game
             core::OwnedUnitId unitId,
             const core::UnitIdentity& identity);
 
+        // 此函数同时移除一个单位的 Spine 实例及其全部跨帧表现状态。
+        void discardAnimation(const AnimationUnitKey& key) noexcept;
+
         // 此函数将当前准备/战斗快照转换为 relax、move、attack、die。
         void syncAnimations();
 

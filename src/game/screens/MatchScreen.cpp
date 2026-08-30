@@ -549,7 +549,14 @@ namespace autochess::game
         const auto existing = animations_.find(key);
         if (existing != animations_.end())
         {
-            return existing->second.get();
+            // 同一显示键若对应了新的单位种类，旧 Spine 实例绝不能复用，
+            // 否则例如决斗者会继续显示先前缓存的奥术师模型。
+            if (existing->second != nullptr
+                && existing->second->unitId() == identity.unitId)
+            {
+                return existing->second.get();
+            }
+            discardAnimation(key);
         }
 
         std::string errorMessage;
@@ -564,6 +571,15 @@ namespace autochess::game
         UnitAnimationInstance* result = instance.get();
         animations_.emplace(key, std::move(instance));
         return result;
+    }
+
+    void MatchScreen::discardAnimation(
+        const AnimationUnitKey& key) noexcept
+    {
+        animations_.erase(key);
+        lastActionSequences_.erase(key);
+        lastBattlePositions_.erase(key);
+        deathAnimationsFinished_.erase(key);
     }
 
     void MatchScreen::updateAnimations(const float deltaSeconds)
@@ -633,6 +649,15 @@ namespace autochess::game
                 ? unit.ownedUnitId
                 : static_cast<core::OwnedUnitId>(unit.id);
             const AnimationUnitKey animationKey{unit.side, animationId};
+
+            // 抵达守卫点的单位已不再参与战斗和绘制，立即释放实例及
+            // 跨帧状态，避免它继续在后台更新或污染后续同键单位。
+            if (unit.state == core::BattleUnitState::ReachedGuard)
+            {
+                discardAnimation(animationKey);
+                continue;
+            }
+
             UnitAnimationInstance* animation =
                 animationFor(unit.side, animationId, unit.identity);
 

@@ -117,6 +117,12 @@ namespace autochess::game
         play(UnitAnimationAction::Relax, true);
     }
 
+    const std::string& UnitAnimationInstance::unitId() const noexcept
+    {
+        static const std::string empty;
+        return asset_ == nullptr ? empty : asset_->unitId;
+    }
+
     const std::string& UnitAnimationInstance::clipFor(
         const UnitAnimationSkeletonAsset& asset,
         const UnitAnimationAction action)
