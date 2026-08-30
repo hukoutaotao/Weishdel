@@ -75,7 +75,6 @@ namespace autochess::game
                 accumulatorSeconds_ -= FixedStepSeconds;
             }
 
-            updateMatchScreen();
             render();
         }
 
@@ -422,6 +421,8 @@ namespace autochess::game
             if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
             {
                 matchScreen->updateAnimations(FixedStepSeconds);
+                // 动画推进后重新同步，及时识别各自已经播完的死亡动作。
+                updateMatchScreen();
             }
             return;
         }
@@ -440,6 +441,9 @@ namespace autochess::game
 
         if (auto* matchScreen = dynamic_cast<MatchScreen*>(screen_.get()))
         {
+            // 核心推进后先发布本固定帧的最新位置与行动序号，再推进动画。
+            // 这样动作判断不会落后一帧，也不会在多次追帧时持续使用旧快照。
+            updateMatchScreen();
             matchScreen->updateAnimations(FixedStepSeconds);
         }
 

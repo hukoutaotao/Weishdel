@@ -21,6 +21,7 @@ namespace autochess::game
         constexpr float TrainingGuardHorizontalOffsetRatio = 0.40F;
         constexpr float TrainingGuardAttackHorizontalOffsetRatio = 0.50F;
         constexpr float MedicAttackHorizontalOffsetRatio = 0.10F;
+        constexpr double BattlePositionChangeEpsilon = 1.0e-6;
 
         // 此函数将角色可见中心上移，使脚底落在格子下部而不是越过格线。
         // 铁卫素材的装备轮廓左右不对称，需要按朝向反向补偿人物主体中心。
@@ -59,6 +60,18 @@ namespace autochess::game
                 position.x += cellSize * attackOffsetRatio * direction;
             }
             return position;
+        }
+
+        // 此函数用容差判断连续战斗坐标是否真的发生了可见移动，避免
+        // 浮点微小误差反复打断攻击动作。
+        bool battlePositionChanged(
+            const core::BattlePosition& previous,
+            const core::BattlePosition& current) noexcept
+        {
+            return std::abs(previous.x - current.x)
+                    > BattlePositionChangeEpsilon
+                || std::abs(previous.y - current.y)
+                    > BattlePositionChangeEpsilon;
         }
 
         // 此函数把核心 UTF-8 文本安全转换为 SFML Unicode 字符串。
@@ -695,7 +708,9 @@ namespace autochess::game
                 && previousSequence->second != unit.basicActionSequence;
             const auto previousPosition = lastBattlePositions_.find(animationKey);
             const bool moved = previousPosition != lastBattlePositions_.end()
-                && !(previousPosition->second == unit.position);
+                && battlePositionChanged(
+                    previousPosition->second,
+                    unit.position);
             if (newBasicAction)
             {
                 // 循环攻击已进入 Loop 后不应被每次伤害结算重新拉回
