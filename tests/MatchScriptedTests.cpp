@@ -1,10 +1,12 @@
 #include "MatchScriptedTests.hpp"
 
 #include "core/config/ConfigBundleLoader.hpp"
+#include "core/combat/BattleSimulation.hpp"
 #include "core/controllers/IPlayerController.hpp"
 #include "core/match/Match.hpp"
 #include "core/model/PlayerStateService.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -250,6 +252,64 @@ int runScriptedMatchTests()
     {
         return runner.failureCount();
     }
+
+    // 此代码块验证正式持续技能配置允许施法者在效果期间继续沿路线移动。
+    const auto skillAllowsMovement = [&bundle](const std::string& skillId)
+    {
+        const auto iterator = std::find_if(
+            bundle.skills.begin(),
+            bundle.skills.end(),
+            [&skillId](const autochess::core::SkillDefinition& skill)
+            {
+                return skill.id == skillId;
+            });
+        if (iterator == bundle.skills.end() || !iterator->allowMove)
+        {
+            return false;
+        }
+
+        autochess::core::BattleUnit caster;
+        caster.id = 1;
+        caster.ownedUnitId = 1;
+        caster.identity = {"movement_test", 1};
+        caster.side = autochess::core::MapSide::A;
+        caster.baseStats.maxHealth = 100.0;
+        caster.baseStats.physicalDefense = 10.0;
+        caster.baseStats.attackSpeed = 1.0;
+        caster.baseStats.moveSpeed = 1.0;
+        caster.stats = caster.baseStats;
+        caster.health = caster.stats.maxHealth;
+        caster.skillId = iterator->id;
+        caster.currentMana = 10.0;
+        caster.maxMana = 10.0;
+        caster.position = {0.5, 0.5};
+        caster.routePoints = {{0, 0}, {1, 0}, {2, 0}};
+        caster.nextRoutePointIndex = 1;
+
+        autochess::core::MapDefinition map;
+        map.id = "skill_movement_test";
+        map.width = 3;
+        map.height = 1;
+        map.gridRows = {"..."};
+
+        autochess::core::BattleSimulation simulation(
+            {caster}, map, 5, {*iterator});
+        if (!simulation.releaseSkill(caster.id)
+            || !simulation.units().front().activeSkill.active)
+        {
+            return false;
+        }
+
+        const double positionBefore = simulation.units().front().position.x;
+        simulation.step();
+        const auto& movedCaster = simulation.units().front();
+        return movedCaster.activeSkill.active
+            && movedCaster.position.x > positionBefore;
+    };
+    runner.check(
+        skillAllowsMovement("training_strike")
+            && skillAllowsMovement("ranger_focus"),
+        "Timed buff skills allow movement while active");
 
     bundle.gameConfig.preparationSeconds = 1;
     bundle.gameConfig.combatTimeoutSeconds = 2;
