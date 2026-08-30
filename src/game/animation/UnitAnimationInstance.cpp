@@ -18,6 +18,7 @@ namespace autochess::game
         constexpr int AnimationBoundsSampleCount = 16;
         constexpr float DuelistAttackScaleMultiplier = 1.2727F;
         constexpr float TrainingGuardAttackScaleMultiplier = 2.4F;
+        constexpr float ArcanistAttackScaleMultiplier = 0.974F;
         constexpr float DuelistDieScaleMultiplier = 1.1F;
         constexpr float TrainingGuardDieScaleMultiplier = 2.4F;
         constexpr float RangerDieScaleMultiplier = 1.24F;
@@ -49,6 +50,10 @@ namespace autochess::game
                 if (unitId == "training_guard")
                 {
                     return TrainingGuardAttackScaleMultiplier;
+                }
+                if (unitId == "arcanist")
+                {
+                    return ArcanistAttackScaleMultiplier;
                 }
             }
             else if (action == UnitAnimationAction::Die)
