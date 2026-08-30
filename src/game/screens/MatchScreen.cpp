@@ -17,6 +17,28 @@ namespace autochess::game
     namespace
     {
         constexpr float UnitAnimationHeightRatio = 1.36F;
+        constexpr float UnitAnimationVerticalOffsetRatio = 0.20F;
+        constexpr float TrainingGuardHorizontalOffsetRatio = 0.04F;
+
+        // 此函数将角色可见中心上移，使脚底落在格子下部而不是越过格线。
+        // 铁卫素材的装备轮廓左右不对称，需要按朝向反向补偿人物主体中心。
+        sf::Vector2f unitAnimationPosition(
+            const sf::Vector2f cellCenter,
+            const float cellSize,
+            const std::string& unitId,
+            const bool faceRight)
+        {
+            sf::Vector2f position = cellCenter;
+            position.y -= cellSize * UnitAnimationVerticalOffsetRatio;
+            if (unitId == "training_guard")
+            {
+                const float direction = faceRight ? -1.0F : 1.0F;
+                position.x += cellSize
+                    * TrainingGuardHorizontalOffsetRatio
+                    * direction;
+            }
+            return position;
+        }
 
         // 此函数把核心 UTF-8 文本安全转换为 SFML Unicode 字符串。
         sf::String fromUtf8(const std::string& text)
@@ -1491,11 +1513,16 @@ namespace autochess::game
                 && animationIt->second != nullptr
                 && animationIt->second->valid())
             {
+                const bool faceRight = unit.side == core::MapSide::A;
                 animationIt->second->draw(
                     target,
-                    center,
+                    unitAnimationPosition(
+                        center,
+                        tileSize,
+                        unit.identity.unitId,
+                        faceRight),
                     animationIt->second->scaleForHeight(tileSize * UnitAnimationHeightRatio),
-                    unit.side == core::MapSide::A);
+                    faceRight);
             }
         }
     }
@@ -1589,9 +1616,13 @@ namespace autochess::game
                 {
                     animationIt->second->draw(
                         target,
-                        sf::Vector2f(
-                            bounds.left + bounds.width / 2.0F,
-                            bounds.top + bounds.height / 2.0F),
+                        unitAnimationPosition(
+                            sf::Vector2f(
+                                bounds.left + bounds.width / 2.0F,
+                                bounds.top + bounds.height / 2.0F),
+                            bounds.height,
+                            unit->identity.unitId,
+                            true),
                         animationIt->second->scaleForHeight(bounds.height * UnitAnimationHeightRatio),
                         true);
                 }
@@ -1627,9 +1658,13 @@ namespace autochess::game
                 {
                     animationIt->second->draw(
                         target,
-                        sf::Vector2f(
-                            bounds.left + bounds.width / 2.0F,
-                            bounds.top + bounds.height / 2.0F),
+                        unitAnimationPosition(
+                            sf::Vector2f(
+                                bounds.left + bounds.width / 2.0F,
+                                bounds.top + bounds.height / 2.0F),
+                            bounds.height,
+                            unit->identity.unitId,
+                            true),
                         animationIt->second->scaleForHeight(bounds.height * UnitAnimationHeightRatio),
                         true);
                 }
@@ -1659,9 +1694,13 @@ namespace autochess::game
             {
                 animationIt->second->draw(
                     target,
-                    sf::Vector2f(
-                        bounds.left + bounds.width / 2.0F,
-                        bounds.top + bounds.height / 2.0F),
+                    unitAnimationPosition(
+                        sf::Vector2f(
+                            bounds.left + bounds.width / 2.0F,
+                            bounds.top + bounds.height / 2.0F),
+                        bounds.height,
+                        unit.identity.unitId,
+                        false),
                     animationIt->second->scaleForHeight(bounds.height * UnitAnimationHeightRatio),
                     false);
             }
