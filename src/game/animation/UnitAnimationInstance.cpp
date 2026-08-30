@@ -16,6 +16,8 @@ namespace autochess::game
     namespace
     {
         constexpr int AnimationBoundsSampleCount = 16;
+        constexpr float DuelistAttackScaleMultiplier = 1.157F;
+        constexpr float TrainingGuardAttackScaleMultiplier = 2.4F;
 
         bool validBounds(
             const float x,
@@ -29,6 +31,19 @@ namespace autochess::game
                 && std::isfinite(height)
                 && width > 0.001F
                 && height > 0.001F;
+        }
+
+        float attackScaleMultiplier(const std::string& unitId) noexcept
+        {
+            if (unitId == "duelist")
+            {
+                return DuelistAttackScaleMultiplier;
+            }
+            if (unitId == "training_guard")
+            {
+                return TrainingGuardAttackScaleMultiplier;
+            }
+            return 1.0F;
         }
     }
 
@@ -361,8 +376,12 @@ namespace autochess::game
             // 无法取得可见附件边界时使用保守比例，避免异常素材撑满窗口。
             return 0.01F;
         }
+        const float actionMultiplier =
+            currentAction_ == UnitAnimationAction::Attack
+            ? attackScaleMultiplier(asset_->unitId)
+            : 1.0F;
         return std::clamp(
-            targetHeight / metrics.referenceHeight,
+            targetHeight / metrics.referenceHeight * actionMultiplier,
             0.001F,
             4.0F);
     }
