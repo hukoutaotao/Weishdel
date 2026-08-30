@@ -54,7 +54,9 @@ namespace autochess::game
         std::unique_ptr<spine::SkeletonDrawable> combatDrawable_;
         spine::SkeletonDrawable* currentDrawable_ = nullptr;
         VisualMetrics preparationMetrics_;
-        VisualMetrics combatMetrics_;
+        VisualMetrics startMetrics_;
+        VisualMetrics attackMetrics_;
+        VisualMetrics dieMetrics_;
         UnitAnimationAction currentAction_ = UnitAnimationAction::Relax;
         std::string currentClip_;
 

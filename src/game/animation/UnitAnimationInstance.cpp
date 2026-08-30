@@ -45,14 +45,26 @@ namespace autochess::game
                 asset_->preparation.manifest.relax,
                 asset_->preparation.manifest.move
             });
-        combatMetrics_ = calculateVisualMetrics(
+        // 战斗骨骼中的入场和死亡动作经常带有远大于人物本体的位移或特效。
+        // 三类动作必须分别测量，否则巨大的 Start/Die 边界会把 Attack
+        // 错误缩小。攻击序列共用一套指标，保证 Begin/Loop/End 连续播放时
+        // 不会在序列内部改变缩放和锚点。
+        startMetrics_ = calculateVisualMetrics(
+            asset_->combat,
+            {
+                asset_->combat.manifest.start
+            });
+        attackMetrics_ = calculateVisualMetrics(
             asset_->combat,
             {
                 asset_->combat.manifest.attack,
-                asset_->combat.manifest.start,
                 asset_->combat.manifest.attackBegin,
-                asset_->combat.manifest.attackEnd,
-                asset_->combat.manifest.die
+                asset_->combat.manifest.attackEnd
+            });
+        dieMetrics_ = calculateVisualMetrics(
+            asset_->combat,
+            {
+                clipFor(asset_->combat, UnitAnimationAction::Die)
             });
         preparationDrawable_ = std::make_unique<spine::SkeletonDrawable>(
             asset_->preparation.skeletonData.get());
@@ -190,9 +202,19 @@ namespace autochess::game
     const UnitAnimationInstance::VisualMetrics&
     UnitAnimationInstance::currentVisualMetrics() const noexcept
     {
-        return currentDrawable_ == preparationDrawable_.get()
-            ? preparationMetrics_
-            : combatMetrics_;
+        switch (currentAction_)
+        {
+        case UnitAnimationAction::Relax:
+        case UnitAnimationAction::Move:
+            return preparationMetrics_;
+        case UnitAnimationAction::Start:
+            return startMetrics_;
+        case UnitAnimationAction::Attack:
+            return attackMetrics_;
+        case UnitAnimationAction::Die:
+            return dieMetrics_;
+        }
+        return preparationMetrics_;
     }
 
     bool UnitAnimationInstance::play(
