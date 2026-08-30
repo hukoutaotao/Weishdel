@@ -144,7 +144,7 @@ namespace autochess::game
             core::OwnedUnitId unitId,
             const core::UnitIdentity& identity);
 
-        // 此函数将当前准备/战斗快照转换为 relax、move、start、attack、die。
+        // 此函数将当前准备/战斗快照转换为 relax、move、attack、die。
         void syncAnimations();
 
         // 此函数绘制带明确红色边框和标题的出售投放区。
@@ -195,7 +195,6 @@ namespace autochess::game
         std::unordered_map<AnimationUnitKey, std::unique_ptr<UnitAnimationInstance>, AnimationUnitKeyHash> animations_;
         std::unordered_map<AnimationUnitKey, std::uint64_t, AnimationUnitKeyHash> lastActionSequences_;
         std::unordered_map<AnimationUnitKey, core::BattlePosition, AnimationUnitKeyHash> lastBattlePositions_;
-        std::unordered_map<AnimationUnitKey, bool, AnimationUnitKeyHash> battleSeen_;
         // 此表独立记录每个死亡单位的退场完成状态，避免尸体持续绘制。
         std::unordered_map<AnimationUnitKey, bool, AnimationUnitKeyHash> deathAnimationsFinished_;
         bool animationCombatActive_ = false;

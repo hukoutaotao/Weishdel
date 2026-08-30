@@ -563,7 +563,6 @@ namespace autochess::game
             animationCombatActive_ = false;
             lastActionSequences_.clear();
             lastBattlePositions_.clear();
-            battleSeen_.clear();
             deathAnimationsFinished_.clear();
             if (view_.self.has_value())
             {
@@ -603,7 +602,6 @@ namespace autochess::game
             animationCombatActive_ = true;
             lastActionSequences_.clear();
             lastBattlePositions_.clear();
-            battleSeen_.clear();
             deathAnimationsFinished_.clear();
         }
 
@@ -646,25 +644,13 @@ namespace autochess::game
             {
                 continue;
             }
-
-            const bool firstSeen = !battleSeen_[animationKey];
             const auto previousSequence = lastActionSequences_.find(animationKey);
             const bool newBasicAction = previousSequence != lastActionSequences_.end()
                 && previousSequence->second != unit.basicActionSequence;
             const auto previousPosition = lastBattlePositions_.find(animationKey);
             const bool moved = previousPosition != lastBattlePositions_.end()
                 && !(previousPosition->second == unit.position);
-
-            if (firstSeen)
-            {
-                animation->play(UnitAnimationAction::Start, true);
-            }
-            else if (animation->currentAction() == UnitAnimationAction::Start
-                     && !animation->currentAnimationComplete())
-            {
-                // 入场动作保持完整，避免战斗开始时立刻被位置变化打断。
-            }
-            else if (newBasicAction)
+            if (newBasicAction)
             {
                 animation->play(UnitAnimationAction::Attack, true);
             }
@@ -683,8 +669,6 @@ namespace autochess::game
             {
                 animation->play(UnitAnimationAction::Move);
             }
-
-            battleSeen_[animationKey] = true;
             lastActionSequences_[animationKey] = unit.basicActionSequence;
             lastBattlePositions_[animationKey] = unit.position;
         }
