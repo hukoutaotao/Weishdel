@@ -19,7 +19,7 @@ namespace autochess::game
         constexpr float UnitAnimationHeightRatio = 1.36F;
         constexpr float UnitAnimationVerticalOffsetRatio = 0.20F;
         constexpr float TrainingGuardHorizontalOffsetRatio = 0.40F;
-        constexpr float TrainingGuardAttackHorizontalOffsetRatio = 0.50F;
+        constexpr float TrainingGuardAttackHorizontalOffsetRatio = 1.00F;
         constexpr float MedicAttackHorizontalOffsetRatio = 0.10F;
         constexpr double BattlePositionChangeEpsilon = 1.0e-6;
 
