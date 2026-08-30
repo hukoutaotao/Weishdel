@@ -19,6 +19,8 @@ namespace autochess::game
         constexpr float UnitAnimationHeightRatio = 1.36F;
         constexpr float UnitAnimationVerticalOffsetRatio = 0.20F;
         constexpr float TrainingGuardHorizontalOffsetRatio = 0.40F;
+        constexpr float TrainingGuardAttackHorizontalOffsetRatio = 0.50F;
+        constexpr float MedicAttackHorizontalOffsetRatio = 0.10F;
 
         // 此函数将角色可见中心上移，使脚底落在格子下部而不是越过格线。
         // 铁卫素材的装备轮廓左右不对称，需要按朝向反向补偿人物主体中心。
@@ -26,7 +28,8 @@ namespace autochess::game
             const sf::Vector2f cellCenter,
             const float cellSize,
             const std::string& unitId,
-            const bool faceRight)
+            const bool faceRight,
+            const UnitAnimationAction action = UnitAnimationAction::Relax)
         {
             sf::Vector2f position = cellCenter;
             position.y -= cellSize * UnitAnimationVerticalOffsetRatio;
@@ -36,6 +39,24 @@ namespace autochess::game
                 position.x += cellSize
                     * TrainingGuardHorizontalOffsetRatio
                     * direction;
+            }
+
+            // 攻击骨骼与准备骨骼的主体中心不同，只在攻击状态追加补偿。
+            // AI 侧按朝向镜像，确保双方单位保持相同的相对位移。
+            if (action == UnitAnimationAction::Attack)
+            {
+                float attackOffsetRatio = 0.0F;
+                if (unitId == "training_guard")
+                {
+                    attackOffsetRatio = TrainingGuardAttackHorizontalOffsetRatio;
+                }
+                else if (unitId == "medic")
+                {
+                    attackOffsetRatio = MedicAttackHorizontalOffsetRatio;
+                }
+
+                const float direction = faceRight ? 1.0F : -1.0F;
+                position.x += cellSize * attackOffsetRatio * direction;
             }
             return position;
         }
@@ -1509,7 +1530,8 @@ namespace autochess::game
                         center,
                         tileSize,
                         unit.identity.unitId,
-                        faceRight),
+                        faceRight,
+                        animationIt->second->currentAction()),
                     animationIt->second->scaleForHeight(tileSize * UnitAnimationHeightRatio),
                     faceRight);
             }
