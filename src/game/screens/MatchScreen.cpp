@@ -18,7 +18,7 @@ namespace autochess::game
     {
         constexpr float UnitAnimationHeightRatio = 1.36F;
         constexpr float UnitAnimationVerticalOffsetRatio = 0.20F;
-        constexpr float TrainingGuardHorizontalOffsetRatio = 0.08F;
+        constexpr float TrainingGuardHorizontalOffsetRatio = 0.20F;
 
         // 此函数将角色可见中心上移，使脚底落在格子下部而不是越过格线。
         // 铁卫素材的装备轮廓左右不对称，需要按朝向反向补偿人物主体中心。
