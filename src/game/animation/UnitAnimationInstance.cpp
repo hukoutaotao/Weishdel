@@ -16,8 +16,11 @@ namespace autochess::game
     namespace
     {
         constexpr int AnimationBoundsSampleCount = 16;
-        constexpr float DuelistAttackScaleMultiplier = 1.157F;
+        constexpr float DuelistAttackScaleMultiplier = 1.2727F;
         constexpr float TrainingGuardAttackScaleMultiplier = 2.4F;
+        constexpr float DuelistDieScaleMultiplier = 1.1F;
+        constexpr float TrainingGuardDieScaleMultiplier = 2.4F;
+        constexpr float RangerDieScaleMultiplier = 1.24F;
 
         bool validBounds(
             const float x,
@@ -33,15 +36,35 @@ namespace autochess::game
                 && height > 0.001F;
         }
 
-        float attackScaleMultiplier(const std::string& unitId) noexcept
+        float actionScaleMultiplier(
+            const std::string& unitId,
+            const UnitAnimationAction action) noexcept
         {
-            if (unitId == "duelist")
+            if (action == UnitAnimationAction::Attack)
             {
-                return DuelistAttackScaleMultiplier;
+                if (unitId == "duelist")
+                {
+                    return DuelistAttackScaleMultiplier;
+                }
+                if (unitId == "training_guard")
+                {
+                    return TrainingGuardAttackScaleMultiplier;
+                }
             }
-            if (unitId == "training_guard")
+            else if (action == UnitAnimationAction::Die)
             {
-                return TrainingGuardAttackScaleMultiplier;
+                if (unitId == "duelist")
+                {
+                    return DuelistDieScaleMultiplier;
+                }
+                if (unitId == "training_guard")
+                {
+                    return TrainingGuardDieScaleMultiplier;
+                }
+                if (unitId == "ranger")
+                {
+                    return RangerDieScaleMultiplier;
+                }
             }
             return 1.0F;
         }
@@ -376,10 +399,9 @@ namespace autochess::game
             // 无法取得可见附件边界时使用保守比例，避免异常素材撑满窗口。
             return 0.01F;
         }
-        const float actionMultiplier =
-            currentAction_ == UnitAnimationAction::Attack
-            ? attackScaleMultiplier(asset_->unitId)
-            : 1.0F;
+        const float actionMultiplier = actionScaleMultiplier(
+            asset_->unitId,
+            currentAction_);
         return std::clamp(
             targetHeight / metrics.referenceHeight * actionMultiplier,
             0.001F,
