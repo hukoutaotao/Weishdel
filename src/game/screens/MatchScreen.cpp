@@ -652,7 +652,12 @@ namespace autochess::game
                 && !(previousPosition->second == unit.position);
             if (newBasicAction)
             {
-                animation->play(UnitAnimationAction::Attack, true);
+                // 循环攻击已进入 Loop 后不应被每次伤害结算重新拉回
+                // Begin；普通一次性攻击仍按 basicActionSequence 重播。
+                if (!animation->repeatingAttack())
+                {
+                    animation->play(UnitAnimationAction::Attack, true);
+                }
             }
             else if (moved)
             {

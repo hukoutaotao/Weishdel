@@ -19,6 +19,7 @@ namespace autochess::game
         std::string attackBegin;
         std::string attackEnd;
         std::string die;
+        bool repeatAttack = false;
 
         // 此函数扫描一个 Spine skeleton 的动作列表并选择稳定的动作名称。
         static UnitAnimationManifest fromSkeletonData(

@@ -198,6 +198,10 @@ namespace autochess::game
             }
         }
 
+        // 带 Begin/Loop/End 的素材在交战期间应持续保持 Loop，离开交战
+        // 时再播放 End；不能把 Loop 当作一次性动作后立刻切回移动。
+        manifest.repeatAttack = manifest.hasAttackSequence();
+
         return manifest;
     }
 }

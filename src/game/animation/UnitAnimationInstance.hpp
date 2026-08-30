@@ -38,6 +38,7 @@ namespace autochess::game
         UnitAnimationAction currentAction() const noexcept { return currentAction_; }
         const std::string& currentClip() const noexcept { return currentClip_; }
         bool currentAnimationComplete() const noexcept;
+        bool repeatingAttack() const noexcept;
         float scaleForHeight(float targetHeight) const noexcept;
 
     private:
@@ -59,6 +60,7 @@ namespace autochess::game
         VisualMetrics dieMetrics_;
         UnitAnimationAction currentAction_ = UnitAnimationAction::Relax;
         std::string currentClip_;
+        bool finishingAttackSequence_ = false;
 
         static const std::string& clipFor(
             const UnitAnimationSkeletonAsset& asset,

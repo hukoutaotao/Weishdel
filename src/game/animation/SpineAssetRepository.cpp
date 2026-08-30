@@ -32,6 +32,64 @@ namespace autochess::game
                    << (error.buffer() == nullptr ? "无法解析 skeleton" : error.buffer());
             return stream.str();
         }
+
+        bool hasAnimation(
+            const UnitAnimationSkeletonAsset& asset,
+            const char* name)
+        {
+            return asset.skeletonData != nullptr
+                && asset.skeletonData->findAnimation(spine::String(name)) != nullptr;
+        }
+
+        void useLoopingAttack(
+            UnitAnimationSkeletonAsset& asset,
+            const char* loop)
+        {
+            if (!hasAnimation(asset, loop))
+            {
+                return;
+            }
+            asset.manifest.attack = loop;
+            asset.manifest.attackBegin.clear();
+            asset.manifest.attackEnd.clear();
+            asset.manifest.repeatAttack = true;
+        }
+
+        void useAttackSequence(
+            UnitAnimationSkeletonAsset& asset,
+            const char* begin,
+            const char* loop,
+            const char* end)
+        {
+            if (!hasAnimation(asset, begin)
+                || !hasAnimation(asset, loop)
+                || !hasAnimation(asset, end))
+            {
+                return;
+            }
+            asset.manifest.attackBegin = begin;
+            asset.manifest.attack = loop;
+            asset.manifest.attackEnd = end;
+            asset.manifest.repeatAttack = true;
+        }
+
+        // 这两套素材的真正基础攻击并不符合通用命名回退规则，必须固定
+        // 到老师素材中指定的动作，避免自动选择 Skill_1 或其他变体。
+        void applyUnitSpecificAttackManifest(UnitAnimationAsset& asset)
+        {
+            if (asset.unitId == "duelist")
+            {
+                useLoopingAttack(asset.combat, "Skill_3_Loop");
+            }
+            else if (asset.unitId == "training_guard")
+            {
+                useAttackSequence(
+                    asset.combat,
+                    "Attack_Begin",
+                    "Attack_Loop",
+                    "Attack_End");
+            }
+        }
     }
 
     SpineAssetRepository::SpineAssetRepository(
@@ -65,6 +123,7 @@ namespace autochess::game
         {
             return nullptr;
         }
+        applyUnitSpecificAttackManifest(*asset);
 
         cache_.emplace(unitId, asset);
         return asset;

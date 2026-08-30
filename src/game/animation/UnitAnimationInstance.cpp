@@ -225,6 +225,33 @@ namespace autochess::game
         {
             return false;
         }
+
+        // Begin/Loop/End 攻击在离开交战、恢复移动时先收尾。End 使用战斗
+        // 骨骼播放完毕后，update() 再无缝切回准备骨骼的 Move。
+        if (action == UnitAnimationAction::Move
+            && currentAction_ == UnitAnimationAction::Attack
+            && asset_->combat.manifest.hasAttackSequence())
+        {
+            if (finishingAttackSequence_)
+            {
+                return true;
+            }
+            if (combatDrawable_ != nullptr
+                && combatDrawable_->state != nullptr)
+            {
+                combatDrawable_->state->setAnimation(
+                    0,
+                    spineString(asset_->combat.manifest.attackEnd),
+                    false);
+                combatDrawable_->update(0.0F);
+                currentDrawable_ = combatDrawable_.get();
+                currentClip_ = asset_->combat.manifest.attackEnd;
+                finishingAttackSequence_ = true;
+                return true;
+            }
+        }
+
+        finishingAttackSequence_ = false;
         const bool preparationAction =
             action == UnitAnimationAction::Relax
             || action == UnitAnimationAction::Move;
@@ -275,18 +302,15 @@ namespace autochess::game
             drawable.state->addAnimation(
                 0,
                 spineString(asset.manifest.attack),
-                false,
-                0.0F);
-            drawable.state->addAnimation(
-                0,
-                spineString(asset.manifest.attackEnd),
-                false,
+                true,
                 0.0F);
         }
         else
         {
             const bool loop = action == UnitAnimationAction::Relax
-                || action == UnitAnimationAction::Move;
+                || action == UnitAnimationAction::Move
+                || (action == UnitAnimationAction::Attack
+                    && asset.manifest.repeatAttack);
             drawable.state->setAnimation(0, spineString(clip), loop);
         }
         drawable.update(0.0F);
@@ -302,8 +326,23 @@ namespace autochess::game
         {
             return true;
         }
+        if (currentAction_ == UnitAnimationAction::Attack
+            && asset_ != nullptr
+            && asset_->combat.manifest.repeatAttack
+            && !finishingAttackSequence_)
+        {
+            return false;
+        }
         spine::TrackEntry* entry = currentDrawable_->state->getCurrent(0);
         return entry == nullptr || entry->isComplete();
+    }
+
+    bool UnitAnimationInstance::repeatingAttack() const noexcept
+    {
+        return currentAction_ == UnitAnimationAction::Attack
+            && asset_ != nullptr
+            && asset_->combat.manifest.repeatAttack
+            && !finishingAttackSequence_;
     }
 
     float UnitAnimationInstance::scaleForHeight(
@@ -333,6 +372,18 @@ namespace autochess::game
         if (currentDrawable_ != nullptr)
         {
             currentDrawable_->update(std::max(0.0F, deltaSeconds));
+        }
+        if (finishingAttackSequence_ && currentAnimationComplete())
+        {
+            finishingAttackSequence_ = false;
+            if (preparationDrawable_ != nullptr)
+            {
+                playClip(
+                    *preparationDrawable_,
+                    asset_->preparation,
+                    UnitAnimationAction::Move,
+                    true);
+            }
         }
     }
 
