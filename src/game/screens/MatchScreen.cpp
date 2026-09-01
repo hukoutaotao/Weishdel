@@ -42,22 +42,24 @@ namespace autochess::game
                     * direction;
             }
 
-            // 攻击骨骼与准备骨骼的主体中心不同，只在攻击状态追加补偿。
+            // 攻击和死亡骨骼与准备骨骼的主体中心不同，铁卫沿用攻击状态的完整补偿。
             // AI 侧按朝向镜像，确保双方单位保持相同的相对位移。
-            if (action == UnitAnimationAction::Attack)
+            if (action == UnitAnimationAction::Attack
+                || (action == UnitAnimationAction::Die
+                    && unitId == "training_guard"))
             {
-                float attackOffsetRatio = 0.0F;
+                float actionOffsetRatio = 0.0F;
                 if (unitId == "training_guard")
                 {
-                    attackOffsetRatio = TrainingGuardAttackHorizontalOffsetRatio;
+                    actionOffsetRatio = TrainingGuardAttackHorizontalOffsetRatio;
                 }
                 else if (unitId == "medic")
                 {
-                    attackOffsetRatio = MedicAttackHorizontalOffsetRatio;
+                    actionOffsetRatio = MedicAttackHorizontalOffsetRatio;
                 }
 
                 const float direction = faceRight ? 1.0F : -1.0F;
-                position.x += cellSize * attackOffsetRatio * direction;
+                position.x += cellSize * actionOffsetRatio * direction;
             }
             return position;
         }

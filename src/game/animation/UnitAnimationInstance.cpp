@@ -20,7 +20,6 @@ namespace autochess::game
         constexpr float TrainingGuardAttackScaleMultiplier = 2.4F;
         constexpr float ArcanistAttackScaleMultiplier = 0.974F;
         constexpr float DuelistDieScaleMultiplier = 1.1F;
-        constexpr float TrainingGuardDieScaleMultiplier = 2.4F;
         constexpr float RangerDieScaleMultiplier = 1.24F;
 
         bool validBounds(
@@ -64,7 +63,8 @@ namespace autochess::game
                 }
                 if (unitId == "training_guard")
                 {
-                    return TrainingGuardDieScaleMultiplier;
+                    // 死亡动画完全沿用攻击动画的 2.4 倍放大补偿。
+                    return TrainingGuardAttackScaleMultiplier;
                 }
                 if (unitId == "ranger")
                 {
