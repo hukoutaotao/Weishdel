@@ -81,6 +81,7 @@ namespace autochess::game
         const core::BattleUnit& unit,
         const sf::Vector2f center,
         const float radius,
+        const float barWidth,
         const bool selected)
     {
         const float safeRadius = std::max(8.0F, radius);
@@ -108,8 +109,8 @@ namespace autochess::game
         levelText.setPosition(center);
         target.draw(levelText);
 
-        // 此代码块绘制固定宽度的生命条和技力条并限制比例范围。
-        const float barWidth = std::max(24.0F, safeRadius * 2.4F);
+        // 此代码块绘制位于角色脚下的生命条和技力条，并限制比例范围。
+        const float safeBarWidth = std::max(24.0F, barWidth);
         const float barHeight = 4.0F;
         const auto ratio = [](const double current, const double maximum) {
             if (maximum <= 0.0)
@@ -122,29 +123,29 @@ namespace autochess::game
         const float healthRatio = ratio(unit.health, unit.stats.maxHealth);
         const float manaRatio = ratio(unit.currentMana, unit.maxMana);
         const sf::Vector2f barOrigin(
-            center.x - barWidth / 2.0F,
-            center.y - safeRadius - 9.0F);
+            center.x - safeBarWidth / 2.0F,
+            center.y + safeRadius + 5.0F);
 
         sf::RectangleShape healthBack(
-            sf::Vector2f(barWidth, barHeight));
+            sf::Vector2f(safeBarWidth, barHeight));
         healthBack.setPosition(barOrigin);
         healthBack.setFillColor(sf::Color(45, 45, 50));
         target.draw(healthBack);
         sf::RectangleShape healthFill(
-            sf::Vector2f(barWidth * healthRatio, barHeight));
+            sf::Vector2f(safeBarWidth * healthRatio, barHeight));
         healthFill.setPosition(barOrigin);
         healthFill.setFillColor(sf::Color(90, 220, 120));
         target.draw(healthFill);
 
         const sf::Vector2f manaOrigin(
-            center.x - barWidth / 2.0F,
-            center.y + safeRadius + 5.0F);
-        sf::RectangleShape manaBack(sf::Vector2f(barWidth, barHeight));
+            center.x - safeBarWidth / 2.0F,
+            barOrigin.y + barHeight + 2.0F);
+        sf::RectangleShape manaBack(sf::Vector2f(safeBarWidth, barHeight));
         manaBack.setPosition(manaOrigin);
         manaBack.setFillColor(sf::Color(45, 45, 50));
         target.draw(manaBack);
         sf::RectangleShape manaFill(
-            sf::Vector2f(barWidth * manaRatio, barHeight));
+            sf::Vector2f(safeBarWidth * manaRatio, barHeight));
         manaFill.setPosition(manaOrigin);
         manaFill.setFillColor(sf::Color(95, 175, 255));
         target.draw(manaFill);

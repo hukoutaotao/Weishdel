@@ -31,6 +31,7 @@ namespace autochess::game
             const core::BattleUnit& unit,
             sf::Vector2f center,
             float radius,
+            float barWidth,
             bool selected);
     };
 }

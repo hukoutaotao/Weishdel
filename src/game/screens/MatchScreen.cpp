@@ -1555,6 +1555,7 @@ namespace autochess::game
                 unit,
                 center,
                 radius,
+                tileSize * 0.80F,
                 unit.id == selectedBattleUnitId_);
 
             // 此代码块优先绘制已同步的Spine角色，资源失败时保留上面的静态回退。
