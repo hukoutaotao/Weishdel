@@ -110,6 +110,7 @@ namespace autochess::game
         target.draw(levelText);
 
         // 此代码块绘制位于角色脚下的生命条和技力条，并限制比例范围。
+        // 在上次位置基础上将整组状态条再下移 6 像素。
         const float safeBarWidth = std::max(24.0F, barWidth);
         const float barHeight = 4.0F;
         const auto ratio = [](const double current, const double maximum) {
@@ -124,7 +125,7 @@ namespace autochess::game
         const float manaRatio = ratio(unit.currentMana, unit.maxMana);
         const sf::Vector2f barOrigin(
             center.x - safeBarWidth / 2.0F,
-            center.y + safeRadius + 5.0F);
+            center.y + safeRadius + 11.0F);
 
         sf::RectangleShape healthBack(
             sf::Vector2f(safeBarWidth, barHeight));
