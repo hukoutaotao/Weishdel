@@ -20,7 +20,8 @@ namespace autochess::game
         constexpr float UnitAnimationVerticalOffsetRatio = 0.20F;
         constexpr float TrainingGuardHorizontalOffsetRatio = 0.40F;
         constexpr float TrainingGuardAttackHorizontalOffsetRatio = 1.00F;
-        constexpr float TrainingGuardDieHorizontalOffsetRatio = 0.20F;
+        constexpr float TrainingGuardDieHorizontalOffsetRatio = 0.80F;
+        constexpr float TrainingGuardDieVerticalOffsetRatio = 0.65F;
         constexpr float MedicAttackHorizontalOffsetRatio = 0.10F;
         constexpr double BattlePositionChangeEpsilon = 1.0e-6;
 
@@ -35,6 +36,12 @@ namespace autochess::game
         {
             sf::Vector2f position = cellCenter;
             position.y -= cellSize * UnitAnimationVerticalOffsetRatio;
+            if (action == UnitAnimationAction::Die
+                && unitId == "training_guard")
+            {
+                // 死亡姿态脚底比其他动作高约 0.65 格，单独下移使其落在格子底线上。
+                position.y += cellSize * TrainingGuardDieVerticalOffsetRatio;
+            }
             if (unitId == "training_guard")
             {
                 const float direction = faceRight ? -1.0F : 1.0F;
@@ -43,8 +50,8 @@ namespace autochess::game
                     * direction;
             }
 
-            // 攻击和死亡骨骼与准备骨骼的主体中心不同。铁卫死亡状态相对原来的
-            // 攻击补偿回移 0.8 格；AI 侧按朝向镜像，保持双方相同的相对位移。
+            // 攻击和死亡骨骼与准备骨骼的主体中心不同。死亡状态额外向人物朝向
+            // 移动 0.6 格，使我方肚脐对准等级数字；AI 侧按朝向自动镜像。
             if (action == UnitAnimationAction::Attack
                 || (action == UnitAnimationAction::Die
                     && unitId == "training_guard"))
