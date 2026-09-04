@@ -205,20 +205,9 @@ namespace autochess::game
             return;
         }
 
-        // 此代码块优先处理战斗选中和技能按钮，统一转换为核心命令。
+        // 此代码块处理战斗单位选中。
         if (view_.phase == core::MatchPhase::Combat)
         {
-            if (skillButton_ != nullptr
-                && skillButton_->handleEvent(event))
-            {
-                // 此代码块在提交技能命令后锁定按钮直到核心返回结果。
-                skillCommandPending_ = true;
-                pendingAction_.kind = UiActionKind::SubmitCommand;
-                pendingAction_.command = core::GameCommand{
-                    core::MapSide::A,
-                    core::ReleaseSkillCommand{selectedBattleUnitId_}};
-                return;
-            }
             if (event.type == sf::Event::MouseButtonPressed
                 && event.mouseButton.button == sf::Mouse::Left)
             {
@@ -444,10 +433,6 @@ namespace autochess::game
         {
             target.draw(combatHud_);
             target.draw(selectedHud_);
-            if (skillButton_ != nullptr)
-            {
-                skillButton_->draw(target);
-            }
         }
 
         // 此代码块在最终结果页绘制再来一局和返回主菜单按钮。
@@ -754,8 +739,6 @@ namespace autochess::game
     // 此函数使用颜色区分成功和失败的核心中文结果。
     void MatchScreen::showCommandResult(const core::CommandResult& result)
     {
-        // 此代码块把核心结果作为技能队列的明确完成信号。
-        skillCommandPending_ = false;
         message_.setString(fromUtf8(result.message));
         message_.setFillColor(
             result.success
@@ -788,7 +771,6 @@ namespace autochess::game
         deathTabButton_.reset();
         refreshButton_.reset();
         startButton_.reset();
-        skillButton_.reset();
         pauseButton_.reset();
         resumeButton_.reset();
         restartButton_.reset();
@@ -957,11 +939,6 @@ namespace autochess::game
             title_.setPosition(20.0F, 18.0F);
             hint_.setPosition(220.0F, 28.0F);
             message_.setPosition(890.0F, 650.0F);
-            skillButton_ = std::make_unique<Button>(
-                font_,
-                sf::FloatRect(880.0F, 500.0F, 368.0F, 52.0F),
-                L"技能未就绪",
-                21);
             pauseButton_ = std::make_unique<Button>(
                 font_,
                 sf::FloatRect(1070.0F, 18.0F, 178.0F, 46.0F),
@@ -1408,18 +1385,13 @@ namespace autochess::game
         return nullptr;
     }
 
-    // 此函数根据当前快照同步战斗 HUD、选中信息和技能按钮状态。
+    // 此函数根据当前快照同步战斗 HUD 和选中信息。
     void MatchScreen::refreshCombatWidgets()
     {
         if (view_.phase != core::MatchPhase::Combat)
         {
-            skillCommandPending_ = false;
             combatHud_.setString(L"");
             selectedHud_.setString(L"");
-            if (skillButton_ != nullptr)
-            {
-                skillButton_->setEnabled(false);
-            }
             return;
         }
 
@@ -1446,7 +1418,6 @@ namespace autochess::game
             }
         }
 
-        bool skillReady = false;
         if (selected != nullptr
             && selected->side == core::MapSide::A
             && selected->state == core::BattleUnitState::Alive)
@@ -1455,9 +1426,7 @@ namespace autochess::game
             selectedStream << unitName(selected->identity.unitId).toWideString()
                            << L"  Lv." << selected->identity.level
                            << L"\n生命 " << static_cast<int>(selected->health)
-                           << L" / " << static_cast<int>(selected->stats.maxHealth)
-                           << L"\n技力 " << static_cast<int>(selected->currentMana)
-                           << L" / " << static_cast<int>(selected->maxMana);
+                           << L" / " << static_cast<int>(selected->stats.maxHealth);
             if (selected->targetId.has_value())
             {
                 const auto target = std::find_if(
@@ -1478,21 +1447,10 @@ namespace autochess::game
                 selectedStream << L"\n目标：无";
             }
             selectedHud_.setString(selectedStream.str());
-            skillReady = selected->maxMana > 0.0
-                && selected->currentMana >= selected->maxMana
-                && !selected->activeSkill.active;
         }
         else
         {
             selectedHud_.setString(L"未选择己方单位");
-        }
-
-        if (skillButton_ != nullptr)
-        {
-            skillButton_->setLabel(
-                skillReady ? L"释放技能" : L"技能未就绪");
-            skillButton_->setEnabled(
-                skillReady && !paused_ && !skillCommandPending_);
         }
     }
 
