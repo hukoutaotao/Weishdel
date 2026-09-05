@@ -77,6 +77,10 @@ CMake 会在每次成功链接后自动复制这些 DLL 和完整 `data/` 到 ex
 - 内置 Noto Sans SC 字体：`third_party/licenses/OFL-1.1.txt`。
 - MSVC runtime 文件说明：`third_party/licenses/MSVC-REDIST-NOTICE.txt`。
 
+## 界面字体
+
+界面中文优先使用 Windows 自带宋体 `simsun.ttc`，并依次回退到华文宋体和随项目提供的 Noto Sans SC。英文优先读取可选的 `data/fonts/NewYork.ttf` 或 `NewYork-Regular.ttf`，未提供时使用 Windows 的 Times New Roman。双方守卫值单独使用微软雅黑粗体 `msyhbd.ttc`，并提供微软雅黑和 Noto Sans SC 回退。全部界面文字使用粗体，并以双倍字号生成后缩回逻辑尺寸，以避免 2560×1440 窗口放大低分辨率字形造成模糊。
+
 ## 资源路径说明
 
 程序优先使用 exe 旁的 `data/`；只有在开发目录缺少相邻 `data/` 时才回退到本次构建时的源码 `data/`。因此将整个 `new/` 目录复制到另一位置后，应在该位置重新配置和编译，或者始终把 exe 与同级 `data/` 一起移动。

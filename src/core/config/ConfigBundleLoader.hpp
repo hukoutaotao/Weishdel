@@ -21,7 +21,7 @@ namespace autochess::core
         std::vector<FactionDefinition> factions;
         std::vector<FactionModifierDefinition> factionModifiers;
 
-        // 此字段保存顺序固定的两张正式地图定义。
+        // 此字段保存顺序固定的四张正式地图定义。
         std::vector<MapDefinition> maps;
     };
 

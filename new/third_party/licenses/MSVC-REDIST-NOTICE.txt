@@ -1,0 +1,11 @@
+Microsoft Visual C++ runtime files included in this standalone copy:
+
+- msvcp140.dll
+- vcruntime140.dll
+- vcruntime140_1.dll
+
+These files are redistributable components supplied by the installed Visual
+Studio C++ toolset. Their redistribution remains subject to Microsoft's
+Visual C++ Redistributable license terms. They are included beside the game
+executable because the SFML release DLLs and the game use the MSVC dynamic
+runtime.

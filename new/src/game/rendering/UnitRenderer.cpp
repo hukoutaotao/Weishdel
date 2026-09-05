@@ -1,5 +1,7 @@
 #include "game/rendering/UnitRenderer.hpp"
 
+#include "game/ui/UiTheme.hpp"
+
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/Text.hpp>
@@ -17,21 +19,21 @@ namespace autochess::game
             // 此代码块为防御、近战、远程、法术和医疗单位分配不同颜色。
             if (unitId == "training_guard")
             {
-                return sf::Color(100, 125, 155, alpha);
+                return sf::Color(91, 100, 110, alpha);
             }
             if (unitId == "duelist")
             {
-                return sf::Color(185, 115, 70, alpha);
+                return sf::Color(119, 91, 70, alpha);
             }
             if (unitId == "ranger")
             {
-                return sf::Color(75, 155, 95, alpha);
+                return sf::Color(70, 111, 84, alpha);
             }
             if (unitId == "arcanist")
             {
-                return sf::Color(135, 90, 180, alpha);
+                return sf::Color(102, 80, 121, alpha);
             }
-            return sf::Color(75, 155, 155, alpha);
+            return sf::Color(67, 106, 106, alpha);
         }
     }
 
@@ -39,6 +41,7 @@ namespace autochess::game
     void UnitRenderer::draw(
         sf::RenderTarget& target,
         const sf::Font& font,
+        const sf::Font& englishFont,
         const sf::String& displayName,
         const core::UnitIdentity& identity,
         const core::MapSide side,
@@ -54,30 +57,33 @@ namespace autochess::game
         body.setOutlineThickness(3.0F);
         body.setOutlineColor(
             side == core::MapSide::A
-                ? sf::Color(95, 185, 255, alpha)
-                : sf::Color(255, 115, 115, alpha));
+                ? ui::withAlpha(ui::FriendlyStrong, alpha)
+                : ui::withAlpha(ui::EnemyStrong, alpha));
         target.draw(body);
 
-        // 此代码块把名称和等级组合为居中的两行短文本。
-        sf::String label = displayName;
-        label += L"\nLv.";
-        label += sf::String(std::to_wstring(identity.level));
-        sf::Text text(label, font, 15);
-        text.setFillColor(sf::Color(250, 250, 250, alpha));
-        const sf::FloatRect textBounds = text.getLocalBounds();
-        text.setOrigin(
-            textBounds.left + textBounds.width / 2.0F,
-            textBounds.top + textBounds.height / 2.0F);
-        text.setPosition(
-            bounds.left + bounds.width / 2.0F,
-            bounds.top + bounds.height / 2.0F);
-        target.draw(text);
+        sf::Text nameText(displayName, font);
+        ui::setTextSize(nameText, 15);
+        nameText.setFillColor(ui::withAlpha(ui::TextPrimary, alpha));
+        ui::centerText(
+            nameText,
+            sf::FloatRect(bounds.left, bounds.top + 16.0F, bounds.width, 24.0F));
+        target.draw(nameText);
+
+        sf::Text levelText(
+            sf::String(L"Lv. ") + sf::String(std::to_wstring(identity.level)),
+            englishFont);
+        ui::setTextSize(levelText, 14);
+        levelText.setFillColor(ui::withAlpha(ui::TextSecondary, alpha));
+        ui::centerText(
+            levelText,
+            sf::FloatRect(bounds.left, bounds.top + 40.0F, bounds.width, 22.0F));
+        target.draw(levelText);
     }
 
     // 此函数将战斗实时属性压缩到固定尺寸的圆形和状态条中。
     void UnitRenderer::drawBattle(
         sf::RenderTarget& target,
-        const sf::Font& font,
+        const sf::Font& englishFont,
         const core::BattleUnit& unit,
         const sf::Vector2f center,
         const float radius,
@@ -94,14 +100,15 @@ namespace autochess::game
             selected
                 ? sf::Color(255, 225, 105)
                 : (unit.side == core::MapSide::A
-                       ? sf::Color(95, 185, 255)
-                       : sf::Color(255, 115, 115)));
+                       ? ui::FriendlyStrong
+                       : ui::EnemyStrong));
         target.draw(body);
 
         // 此代码块在单位圆心绘制短等级标记，避免地图上出现长文本。
         sf::Text levelText(
-            sf::String(std::to_wstring(unit.identity.level)), font, 14);
-        levelText.setFillColor(sf::Color(250, 250, 250));
+            sf::String(std::to_wstring(unit.identity.level)), englishFont);
+        ui::setTextSize(levelText, 14);
+        levelText.setFillColor(ui::TextPrimary);
         const sf::FloatRect levelBounds = levelText.getLocalBounds();
         levelText.setOrigin(
             levelBounds.left + levelBounds.width / 2.0F,
@@ -129,12 +136,12 @@ namespace autochess::game
         sf::RectangleShape healthBack(
             sf::Vector2f(safeBarWidth, barHeight));
         healthBack.setPosition(barOrigin);
-        healthBack.setFillColor(sf::Color(45, 45, 50));
+        healthBack.setFillColor(ui::Control);
         target.draw(healthBack);
         sf::RectangleShape healthFill(
             sf::Vector2f(safeBarWidth * healthRatio, barHeight));
         healthFill.setPosition(barOrigin);
-        healthFill.setFillColor(sf::Color(90, 220, 120));
+        healthFill.setFillColor(ui::Health);
         target.draw(healthFill);
 
     }

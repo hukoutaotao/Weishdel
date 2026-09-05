@@ -18,6 +18,7 @@ namespace autochess::game
         static void draw(
             sf::RenderTarget& target,
             const sf::Font& font,
+            const sf::Font& englishFont,
             const sf::String& displayName,
             const core::UnitIdentity& identity,
             core::MapSide side,
@@ -27,7 +28,7 @@ namespace autochess::game
         // 此函数用圆形标记、等级和生命条绘制战斗单位。
         static void drawBattle(
             sf::RenderTarget& target,
-            const sf::Font& font,
+            const sf::Font& englishFont,
             const core::BattleUnit& unit,
             sf::Vector2f center,
             float radius,

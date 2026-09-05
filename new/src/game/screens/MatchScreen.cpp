@@ -2,6 +2,7 @@
 
 #include "game/rendering/MapRenderer.hpp"
 #include "game/rendering/UnitRenderer.hpp"
+#include "game/ui/UiTheme.hpp"
 
 #include <SFML/Graphics/VertexArray.hpp>
 
@@ -21,7 +22,7 @@ namespace autochess::game
         constexpr float TrainingGuardHorizontalOffsetRatio = 0.40F;
         constexpr float TrainingGuardAttackHorizontalOffsetRatio = 1.00F;
         constexpr float TrainingGuardDieHorizontalOffsetRatio = 0.80F;
-        constexpr float TrainingGuardDieVerticalOffsetRatio = 0.65F;
+        constexpr float TrainingGuardDieVerticalOffsetRatio = -0.35F;
         constexpr float MedicAttackHorizontalOffsetRatio = 0.10F;
         constexpr double BattlePositionChangeEpsilon = 1.0e-6;
 
@@ -39,7 +40,7 @@ namespace autochess::game
             if (action == UnitAnimationAction::Die
                 && unitId == "training_guard")
             {
-                // 死亡姿态脚底比其他动作高约 0.65 格，单独下移使其落在格子底线上。
+                // 相比上一版向上移动整整一格，同时保持水平位置和缩放不变。
                 position.y += cellSize * TrainingGuardDieVerticalOffsetRatio;
             }
             if (unitId == "training_guard")
@@ -111,45 +112,67 @@ namespace autochess::game
     // 此构造函数建立选择流程共用的标题、提示和消息文本。
     MatchScreen::MatchScreen(
         const sf::Font& font,
+        const sf::Font& englishFont,
+        const sf::Font& guardFont,
         const core::ConfigBundle& config,
         std::filesystem::path dataDirectory)
         : font_(font),
+          englishFont_(englishFont),
+          guardFont_(guardFont),
           config_(config),
           animationRepository_(std::move(dataDirectory))
     {
         title_.setFont(font_);
-        title_.setCharacterSize(42);
-        title_.setFillColor(sf::Color(235, 238, 248));
-        title_.setPosition(470.0F, 80.0F);
+        ui::setTextSize(title_, 42);
+        title_.setFillColor(ui::TextPrimary);
+        ui::centerTextAtTop(title_, 640.0F, 80.0F);
 
         hint_.setFont(font_);
-        hint_.setCharacterSize(22);
-        hint_.setFillColor(sf::Color(160, 180, 215));
-        hint_.setPosition(425.0F, 150.0F);
+        ui::setTextSize(hint_, 22);
+        hint_.setFillColor(ui::TextSecondary);
+        ui::centerTextAtTop(hint_, 640.0F, 150.0F);
 
         hud_.setFont(font_);
-        hud_.setCharacterSize(19);
-        hud_.setFillColor(sf::Color(225, 228, 238));
-        hud_.setPosition(180.0F, 24.0F);
+        ui::setTextSize(hud_, 17);
+        hud_.setFillColor(ui::TextSecondary);
+        ui::placeTextAtTopLeft(hud_, 20.0F, 24.0F);
+
+        timerHud_.setFont(font_);
+        ui::setTextSize(timerHud_, 24);
+        timerHud_.setFillColor(ui::TextPrimary);
+
+        hoverInfo_.setFont(font_);
+        ui::setTextSize(hoverInfo_, 20);
+        hoverInfo_.setFillColor(ui::TextSecondary);
 
         combatHud_.setFont(font_);
-        combatHud_.setCharacterSize(20);
-        combatHud_.setFillColor(sf::Color(225, 228, 238));
-        combatHud_.setPosition(880.0F, 88.0F);
+        ui::setTextSize(combatHud_, 19);
+        combatHud_.setFillColor(ui::TextSecondary);
+        ui::placeTextAtTopLeft(combatHud_, 880.0F, 95.0F);
+
+        guardHud_.setFont(guardFont_);
+        ui::setTextSize(guardHud_, 32);
+        guardHud_.setFillColor(ui::TextPrimary);
+        ui::placeTextAtTopLeft(guardHud_, 880.0F, 150.0F);
+
+        settlementHud_.setFont(font_);
+        ui::setTextSize(settlementHud_, 24);
+        settlementHud_.setFillColor(ui::TextSecondary);
+        ui::placeTextAtTopLeft(settlementHud_, 880.0F, 285.0F);
 
         selectedHud_.setFont(font_);
-        selectedHud_.setCharacterSize(18);
-        selectedHud_.setFillColor(sf::Color(205, 215, 235));
-        selectedHud_.setPosition(880.0F, 190.0F);
+        ui::setTextSize(selectedHud_, 18);
+        selectedHud_.setFillColor(ui::TextSecondary);
+        ui::placeTextAtTopLeft(selectedHud_, 880.0F, 245.0F);
 
         reserveTitle_.setFont(font_);
         reserveTitle_.setString(L"备用区");
-        reserveTitle_.setCharacterSize(18);
-        reserveTitle_.setFillColor(sf::Color(220, 225, 238));
-        reserveTitle_.setPosition(20.0F, 590.0F);
+        ui::setTextSize(reserveTitle_, 18);
+        reserveTitle_.setFillColor(ui::TextSecondary);
+        ui::placeTextAtTopLeft(reserveTitle_, 20.0F, 590.0F);
 
         message_.setFont(font_);
-        message_.setCharacterSize(22);
+        ui::setTextSize(message_, 22);
         message_.setPosition(390.0F, 625.0F);
     }
 
@@ -258,31 +281,24 @@ namespace autochess::game
             }
         }
 
-        // 此代码块让路线调试开关只在已经选定地图时可用。
-        if (routeToggleButton_ != nullptr
-            && routeToggleButton_->handleEvent(event))
+        // 此代码块让购买与复活页签只切换右侧列表而不触碰核心状态。
+        if (purchaseTabButton_ != nullptr
+            && purchaseTabButton_->handleEvent(event))
         {
-            showRoutes_ = !showRoutes_;
-            routeToggleButton_->setLabel(
-                showRoutes_ ? L"隐藏路线" : L"显示路线");
-        }
-
-        // 此代码块让两个页签只切换右侧列表而不触碰核心状态。
-        if (shopTabButton_ != nullptr && shopTabButton_->handleEvent(event))
-        {
-            showDeathList_ = false;
+            showReviveList_ = false;
             refreshPreparationWidgets();
             return;
         }
-        if (deathTabButton_ != nullptr && deathTabButton_->handleEvent(event))
+        if (reviveTabButton_ != nullptr
+            && reviveTabButton_->handleEvent(event))
         {
-            showDeathList_ = true;
+            showReviveList_ = true;
             refreshPreparationWidgets();
             return;
         }
 
         // 此代码块只处理当前可见页签中的购买或复活按钮。
-        if (showDeathList_)
+        if (showReviveList_)
         {
             for (const ReviveCard& card : reviveCards_)
             {
@@ -314,7 +330,7 @@ namespace autochess::game
         }
 
         // 此代码块只在商店页签把刷新按钮点击转换为刷新命令。
-        if (!showDeathList_
+        if (!showReviveList_
             && refreshButton_ != nullptr
             && refreshButton_->handleEvent(event))
         {
@@ -344,6 +360,7 @@ namespace autochess::game
                 break;
             }
         }
+        refreshChoiceHover();
     }
 
     // 此函数绘制选择标题、阶段说明、全部选项和最近命令结果。
@@ -360,29 +377,25 @@ namespace autochess::game
                 target,
                 view_.selectedMap.value(),
                 boardTransform_,
-                showRoutes_,
                 deploymentPreview_);
-            if (routeToggleButton_ != nullptr)
-            {
-                routeToggleButton_->draw(target);
-            }
         }
 
         // 此代码块在准备阶段绘制经济 HUD、页签、当前列表和操作按钮。
         if (view_.phase == core::MatchPhase::Preparation)
         {
             target.draw(hud_);
-            if (shopTabButton_ != nullptr)
+            target.draw(timerHud_);
+            if (purchaseTabButton_ != nullptr)
             {
-                shopTabButton_->draw(target);
+                purchaseTabButton_->draw(target);
             }
-            if (deathTabButton_ != nullptr)
+            if (reviveTabButton_ != nullptr)
             {
-                deathTabButton_->draw(target);
+                reviveTabButton_->draw(target);
             }
 
             // 此代码块根据当前页签只绘制商店卡片或复活按钮。
-            if (showDeathList_)
+            if (showReviveList_)
             {
                 for (const ReviveCard& card : reviveCards_)
                 {
@@ -429,10 +442,20 @@ namespace autochess::game
         {
             drawCombatUnits(target);
         }
-        if (view_.phase == core::MatchPhase::Combat)
+        if (view_.phase == core::MatchPhase::Combat
+            || view_.phase == core::MatchPhase::RoundSettlement)
         {
             target.draw(combatHud_);
-            target.draw(selectedHud_);
+            target.draw(guardHud_);
+            if (view_.phase == core::MatchPhase::Combat
+                && !selectedHud_.getString().isEmpty())
+            {
+                target.draw(selectedHud_);
+            }
+            if (view_.phase == core::MatchPhase::RoundSettlement)
+            {
+                target.draw(settlementHud_);
+            }
         }
 
         // 此代码块在最终结果页绘制再来一局和返回主菜单按钮。
@@ -452,11 +475,12 @@ namespace autochess::game
         if (paused_)
         {
             sf::RectangleShape overlay(sf::Vector2f(1280.0F, 720.0F));
-            overlay.setFillColor(sf::Color(15, 18, 25, 190));
+            overlay.setFillColor(ui::withAlpha(ui::Background, 224));
             target.draw(overlay);
-            sf::Text pausedText(L"游戏已暂停", font_, 42);
-            pausedText.setFillColor(sf::Color(240, 242, 250));
-            pausedText.setPosition(535.0F, 145.0F);
+            sf::Text pausedText(L"游戏已暂停", font_);
+            ui::setTextSize(pausedText, 42);
+            pausedText.setFillColor(ui::TextPrimary);
+            ui::centerTextAtTop(pausedText, 640.0F, 145.0F);
             target.draw(pausedText);
             if (resumeButton_ != nullptr)
             {
@@ -474,6 +498,10 @@ namespace autochess::game
 
         target.draw(title_);
         target.draw(hint_);
+        if (!hoverInfo_.getString().isEmpty())
+        {
+            target.draw(hoverInfo_);
+        }
         // 此代码块按配置顺序绘制当前阶段可用的全部按钮。
         for (const Choice& choice : choices_)
         {
@@ -742,8 +770,8 @@ namespace autochess::game
         message_.setString(fromUtf8(result.message));
         message_.setFillColor(
             result.success
-                ? sf::Color(100, 215, 135)
-                : sf::Color(240, 105, 105));
+                ? ui::Success
+                : ui::Error);
         messageClock_.restart();
     }
 
@@ -760,15 +788,22 @@ namespace autochess::game
         refreshCombatWidgets();
     }
 
+    // 此函数由应用层每帧同步结算停留时间，界面只负责换算为可读秒数。
+    void MatchScreen::setSettlementCountdown(
+        const std::uint64_t framesRemaining)
+    {
+        settlementFramesRemaining_ = framesRemaining;
+        refreshSettlementCountdown();
+    }
+
     // 此函数根据核心选择列表建立动态数量的选择按钮。
     void MatchScreen::rebuildChoices()
     {
         choices_.clear();
         shopCards_.clear();
         reviveCards_.clear();
-        routeToggleButton_.reset();
-        shopTabButton_.reset();
-        deathTabButton_.reset();
+        purchaseTabButton_.reset();
+        reviveTabButton_.reset();
         refreshButton_.reset();
         startButton_.reset();
         pauseButton_.reset();
@@ -776,11 +811,13 @@ namespace autochess::game
         restartButton_.reset();
         resultMenuButton_.reset();
         playAgainButton_.reset();
-        showDeathList_ = false;
+        showReviveList_ = false;
         message_.setString(L"");
+        hoverInfo_.setString(L"");
+        timerHud_.setString(L"");
+        guardHud_.setString(L"");
+        settlementHud_.setString(L"");
 
-        title_.setPosition(470.0F, 80.0F);
-        hint_.setPosition(425.0F, 150.0F);
         message_.setPosition(390.0F, 625.0F);
 
         const float buttonLeft = 390.0F;
@@ -794,11 +831,14 @@ namespace autochess::game
         {
             title_.setString(L"选择地图");
             hint_.setString(L"请选择本局使用的战场");
+            ui::centerTextAtTop(title_, 640.0F, 80.0F);
+            ui::centerTextAtTop(hint_, 640.0F, 150.0F);
             for (std::size_t index = 0; index < view_.maps.size(); ++index)
             {
                 const core::SelectionOptionView& option = view_.maps[index];
                 Choice choice;
                 choice.id = option.id;
+                choice.displayName = fromUtf8(option.name);
                 choice.button = std::make_unique<Button>(
                     font_,
                     sf::FloatRect(
@@ -806,7 +846,7 @@ namespace autochess::game
                         firstTop + gap * static_cast<float>(index),
                         buttonWidth,
                         buttonHeight),
-                    fromUtf8(option.name));
+                    choice.displayName);
                 choices_.push_back(std::move(choice));
             }
         }
@@ -814,11 +854,14 @@ namespace autochess::game
         {
             title_.setString(L"选择分队");
             hint_.setString(L"分队会影响部署上限、价格和单位属性");
+            ui::centerTextAtTop(title_, 640.0F, 80.0F);
+            ui::centerTextAtTop(hint_, 640.0F, 150.0F);
             for (std::size_t index = 0; index < view_.factions.size(); ++index)
             {
                 const core::SelectionOptionView& option = view_.factions[index];
                 Choice choice;
                 choice.id = option.id;
+                choice.displayName = fromUtf8(option.name);
                 choice.button = std::make_unique<Button>(
                     font_,
                     sf::FloatRect(
@@ -826,7 +869,7 @@ namespace autochess::game
                         firstTop + gap * static_cast<float>(index),
                         buttonWidth,
                         buttonHeight),
-                    fromUtf8(option.name));
+                    choice.displayName);
                 choices_.push_back(std::move(choice));
             }
         }
@@ -834,10 +877,13 @@ namespace autochess::game
         {
             title_.setString(L"选择电脑策略");
             hint_.setString(L"请选择电脑的决策风格：进攻、防守或路线");
+            ui::centerTextAtTop(title_, 640.0F, 80.0F);
+            ui::centerTextAtTop(hint_, 640.0F, 150.0F);
             for (std::size_t index = 0; index < view_.aiStrategies.size(); ++index)
             {
                 Choice choice;
                 choice.strategy = view_.aiStrategies[index];
+                choice.displayName = strategyName(choice.strategy);
                 choice.button = std::make_unique<Button>(
                     font_,
                     sf::FloatRect(
@@ -845,33 +891,26 @@ namespace autochess::game
                         firstTop + gap * static_cast<float>(index),
                         buttonWidth,
                         buttonHeight),
-                    strategyName(choice.strategy));
+                    choice.displayName);
                 choices_.push_back(std::move(choice));
             }
         }
         else if (view_.phase == core::MatchPhase::Preparation)
         {
-            title_.setString(L"准备阶段");
-            hint_.setString(L"蓝色为己方部署格，红色为电脑部署格");
-            title_.setPosition(20.0F, 18.0F);
-            hint_.setPosition(220.0F, 28.0F);
+            title_.setString(L"");
+            hint_.setString(L"");
             message_.setPosition(890.0F, 650.0F);
-            routeToggleButton_ = std::make_unique<Button>(
-                font_,
-                sf::FloatRect(690.0F, 18.0F, 170.0F, 46.0F),
-                L"显示路线",
-                20);
 
-            // 此代码块建立商店和死亡列表两个互斥页签按钮。
-            shopTabButton_ = std::make_unique<Button>(
+            // 此代码块建立购买和复活两个互斥页签按钮。
+            purchaseTabButton_ = std::make_unique<Button>(
                 font_,
                 sf::FloatRect(880.0F, 72.0F, 178.0F, 40.0F),
-                L"【商店】",
+                L"【购买】",
                 19);
-            deathTabButton_ = std::make_unique<Button>(
+            reviveTabButton_ = std::make_unique<Button>(
                 font_,
                 sf::FloatRect(1070.0F, 72.0F, 178.0F, 40.0F),
-                L"死亡列表 (0)",
+                L"复活 (0)",
                 19);
 
             // 此代码块为正式六槽商店建立两列三行的稳定按钮布局。
@@ -901,7 +940,7 @@ namespace autochess::game
             refreshButton_ = std::make_unique<Button>(
                 font_,
                 sf::FloatRect(880.0F, 420.0F, 368.0F, 52.0F),
-                L"刷新商店",
+                L"刷新",
                 21);
 
             // 此代码块建立始终位于右侧底部的提前开战按钮。
@@ -935,9 +974,8 @@ namespace autochess::game
         else if (view_.phase == core::MatchPhase::Combat)
         {
             title_.setString(L"战斗进行中");
-            hint_.setString(L"选择己方单位查看战斗状态");
-            title_.setPosition(20.0F, 18.0F);
-            hint_.setPosition(220.0F, 28.0F);
+            hint_.setString(L"");
+            ui::placeTextAtTopLeft(title_, 20.0F, 18.0F);
             message_.setPosition(890.0F, 650.0F);
             pauseButton_ = std::make_unique<Button>(
                 font_,
@@ -963,36 +1001,16 @@ namespace autochess::game
         }
         else if (view_.phase == core::MatchPhase::RoundSettlement)
         {
-            title_.setString(L"回合结算");
-            title_.setPosition(500.0F, 270.0F);
-            hint_.setPosition(365.0F, 350.0F);
-            if (view_.battleSummary.has_value())
-            {
-                const core::BattleSummary& summary =
-                    view_.battleSummary.value();
-                std::wostringstream settlementStream;
-                settlementStream << L"战斗已结束，正在结算守卫伤害和单位状态\n"
-                                  << L"对我方守卫伤害："
-                                  << summary.guardDamageToA
-                                  << L"    对电脑守卫伤害："
-                                  << summary.guardDamageToB
-                                  << L"\n死亡："
-                                  << summary.deadOwnedUnitIds.size()
-                                  << L"    到达守卫："
-                                  << summary.reachedGuardOwnedUnitIds.size()
-                                  << L"    存活："
-                                  << summary.survivingOwnedUnitIds.size();
-                hint_.setString(settlementStream.str());
-            }
-            else
-            {
-                hint_.setString(L"正在结算守卫伤害、单位状态和下一回合资源");
-            }
+            title_.setString(L"");
+            hint_.setString(L"");
+            message_.setPosition(890.0F, 650.0F);
+            refreshCombatWidgets();
+            refreshSettlementCountdown();
         }
         else if (view_.phase == core::MatchPhase::MatchResult)
         {
             title_.setString(L"对局结束");
-            title_.setPosition(535.0F, 220.0F);
+            ui::centerTextAtTop(title_, 640.0F, 220.0F);
 
             // 此代码块把核心最终结果转换为静态中文胜负和守卫摘要。
             sf::String outcome = L"对局结果未知";
@@ -1015,7 +1033,7 @@ namespace autochess::game
                          << L"    我方守卫：" << view_.result.guardValueA
                          << L"    敌方守卫：" << view_.result.guardValueB;
             hint_.setString(resultStream.str());
-            hint_.setPosition(390.0F, 310.0F);
+            ui::centerTextAtTop(hint_, 640.0F, 310.0F);
             playAgainButton_ = std::make_unique<Button>(
                 font_,
                 sf::FloatRect(390.0F, 470.0F, 240.0F, 58.0F),
@@ -1029,7 +1047,130 @@ namespace autochess::game
         }
     }
 
-    // 此函数从只读快照生成准备 HUD 并同步页签、商店和开战按钮。
+    void MatchScreen::refreshChoiceHover()
+    {
+        hoverInfo_.setString(L"");
+        if (view_.phase != core::MatchPhase::FactionSelection)
+        {
+            return;
+        }
+
+        for (const Choice& choice : choices_)
+        {
+            if (choice.button != nullptr && choice.button->isHovered())
+            {
+                const auto faction = std::find_if(
+                    config_.factions.begin(),
+                    config_.factions.end(),
+                    [&choice](const core::FactionDefinition& candidate) {
+                        return candidate.id == choice.id;
+                    });
+                if (faction == config_.factions.end())
+                {
+                    return;
+                }
+
+                std::wostringstream details;
+                details << choice.displayName.toWideString()
+                        << L"｜初始守卫 " << faction->initialGuard
+                        << L"｜部署上限 " << faction->maxDeployed;
+                const int pricePercent = static_cast<int>(std::lround(
+                    (faction->priceMultiplier - 1.0) * 100.0));
+                details << (pricePercent == 0
+                                ? L"｜标准价格"
+                                : L"｜全体价格 ");
+                if (pricePercent != 0)
+                {
+                    if (pricePercent > 0)
+                    {
+                        details << L'+';
+                    }
+                    details << pricePercent << L'%';
+                }
+
+                bool firstModifier = true;
+                std::string previousUnitId;
+                for (const core::FactionModifierDefinition& modifier :
+                     config_.factionModifiers)
+                {
+                    if (modifier.factionId != choice.id)
+                    {
+                        continue;
+                    }
+                    const bool sameUnit = !firstModifier
+                        && modifier.unitId == previousUnitId;
+                    details << (firstModifier
+                                    ? L"\n"
+                                    : (sameUnit ? L"，" : L"；"));
+                    if (!sameUnit)
+                    {
+                        details << unitName(modifier.unitId).toWideString()
+                                << L"：";
+                    }
+                    firstModifier = false;
+                    previousUnitId = modifier.unitId;
+                    switch (modifier.attribute)
+                    {
+                    case core::FactionAttribute::MaxHealth:
+                        details << L"生命";
+                        break;
+                    case core::FactionAttribute::AttackPower:
+                        details << L"攻击力";
+                        break;
+                    case core::FactionAttribute::PhysicalDefense:
+                        details << L"物理防御";
+                        break;
+                    case core::FactionAttribute::MagicResistance:
+                        details << L"魔法抗性";
+                        break;
+                    case core::FactionAttribute::AttackRange:
+                        details << L"攻击距离";
+                        break;
+                    case core::FactionAttribute::MoveSpeed:
+                        details << L"移动速度";
+                        break;
+                    case core::FactionAttribute::AttackSpeed:
+                        details << L"攻击速度";
+                        break;
+                    case core::FactionAttribute::GuardDamage:
+                        details << L"守卫伤害";
+                        break;
+                    case core::FactionAttribute::Price:
+                        details << L"价格";
+                        break;
+                    default:
+                        details << L"属性";
+                        break;
+                    }
+
+                    if (modifier.operation == core::FactionOperation::Multiply)
+                    {
+                        const int percent = static_cast<int>(std::lround(
+                            (modifier.value - 1.0) * 100.0));
+                        if (percent > 0)
+                        {
+                            details << L'+';
+                        }
+                        details << percent << L'%';
+                    }
+                    else
+                    {
+                        if (modifier.value > 0.0)
+                        {
+                            details << L'+';
+                        }
+                        details << static_cast<int>(std::lround(modifier.value));
+                    }
+                }
+
+                hoverInfo_.setString(details.str());
+                ui::centerTextAtTop(hoverInfo_, 640.0F, 505.0F);
+                return;
+            }
+        }
+    }
+
+    // 此函数从只读快照生成备战 HUD 并同步购买、复活和开战按钮。
     void MatchScreen::refreshPreparationWidgets()
     {
         // 此代码块在非准备阶段或缺少玩家数据时保持控件为空。
@@ -1037,6 +1178,7 @@ namespace autochess::game
             || !view_.self.has_value())
         {
             hud_.setString(L"");
+            timerHud_.setString(L"");
             return;
         }
 
@@ -1050,22 +1192,28 @@ namespace autochess::game
         hudStream << L"第 " << view_.currentRound << L" / "
                   << view_.maxRounds << L" 回合    金币 " << player.gold
                   << L"    我方守卫 " << player.guardValue
-                  << L"    敌方守卫 " << opponentGuard
-                  << L"    剩余 " << secondsRemaining << L" 秒";
+                  << L"    敌方守卫 " << opponentGuard;
         hud_.setString(hudStream.str());
+        ui::placeTextAtTopLeft(hud_, 20.0F, 24.0F);
 
-        // 此代码块用书名号标明当前页签并实时显示死亡单位数量。
-        if (shopTabButton_ != nullptr)
+        sf::String timerLabel = L"准备剩余 ";
+        timerLabel += sf::String(std::to_wstring(secondsRemaining));
+        timerLabel += L" 秒";
+        timerHud_.setString(timerLabel);
+        ui::centerTextAtTop(timerHud_, 640.0F, 19.0F);
+
+        // 此代码块用书名号标明当前页签并实时显示可复活单位数量。
+        if (purchaseTabButton_ != nullptr)
         {
-            shopTabButton_->setLabel(
-                showDeathList_ ? L"商店" : L"【商店】");
+            purchaseTabButton_->setLabel(
+                showReviveList_ ? L"购买" : L"【购买】");
         }
-        if (deathTabButton_ != nullptr)
+        if (reviveTabButton_ != nullptr)
         {
-            sf::String label = showDeathList_ ? L"【死亡列表 (" : L"死亡列表 (";
+            sf::String label = showReviveList_ ? L"【复活 (" : L"复活 (";
             label += sf::String(std::to_wstring(player.deadUnits.size()));
-            label += showDeathList_ ? L")】" : L")";
-            deathTabButton_->setLabel(label);
+            label += showReviveList_ ? L")】" : L")";
+            reviveTabButton_->setLabel(label);
         }
         syncReviveCards();
 
@@ -1089,7 +1237,7 @@ namespace autochess::game
                 }
 
                 sf::String label = unitName(offer->unitId);
-                label += L"  Lv.1\n";
+                label += L"  1级\n";
                 label += sf::String(std::to_wstring(offer->displayedPrice));
                 label += L" 金币";
                 card.button->setLabel(label);
@@ -1100,7 +1248,7 @@ namespace autochess::game
         // 此代码块让刷新按钮显示正式配置中的费用但仍允许核心报告金币不足。
         if (refreshButton_ != nullptr)
         {
-            sf::String label = L"刷新商店  ";
+            sf::String label = L"刷新  ";
             label += sf::String(std::to_wstring(
                 config_.gameConfig.shopRefreshCost));
             label += L" 金币";
@@ -1388,9 +1536,11 @@ namespace autochess::game
     // 此函数根据当前快照同步战斗 HUD 和选中信息。
     void MatchScreen::refreshCombatWidgets()
     {
-        if (view_.phase != core::MatchPhase::Combat)
+        if (view_.phase != core::MatchPhase::Combat
+            && view_.phase != core::MatchPhase::RoundSettlement)
         {
             combatHud_.setString(L"");
+            guardHud_.setString(L"");
             selectedHud_.setString(L"");
             return;
         }
@@ -1398,15 +1548,30 @@ namespace autochess::game
         const int opponentGuard = view_.opponent.available
             ? view_.opponent.guardValue
             : 0;
-        const std::uint64_t secondsRemaining =
-            (view_.combatFramesRemaining + 59U) / 60U;
         std::wostringstream hudStream;
         hudStream << L"第 " << view_.currentRound << L" / "
-                  << view_.maxRounds << L" 回合\n我方守卫 "
-                  << (view_.self.has_value() ? view_.self->guardValue : 0)
-                  << L"    敌方守卫 " << opponentGuard
-                  << L"\n战斗剩余 " << secondsRemaining << L" 秒";
+                  << view_.maxRounds << L" 回合";
+        if (view_.phase == core::MatchPhase::Combat)
+        {
+            const std::uint64_t secondsRemaining =
+                (view_.combatFramesRemaining + 59U) / 60U;
+            hudStream << L"    战斗剩余 " << secondsRemaining << L" 秒";
+        }
         combatHud_.setString(hudStream.str());
+        ui::placeTextAtTopLeft(combatHud_, 880.0F, 95.0F);
+
+        std::wostringstream guardStream;
+        guardStream << L"我方守卫  "
+                    << (view_.self.has_value() ? view_.self->guardValue : 0)
+                    << L"\n敌方守卫  " << opponentGuard;
+        guardHud_.setString(guardStream.str());
+        ui::placeTextAtTopLeft(guardHud_, 880.0F, 145.0F);
+
+        if (view_.phase == core::MatchPhase::RoundSettlement)
+        {
+            selectedHud_.setString(L"");
+            return;
+        }
 
         const core::BattleUnit* selected = nullptr;
         for (const core::BattleUnit& unit : view_.battleUnits)
@@ -1424,7 +1589,7 @@ namespace autochess::game
         {
             std::wostringstream selectedStream;
             selectedStream << unitName(selected->identity.unitId).toWideString()
-                           << L"  Lv." << selected->identity.level
+                           << L"  等级 " << selected->identity.level
                            << L"\n生命 " << static_cast<int>(selected->health)
                            << L" / " << static_cast<int>(selected->stats.maxHealth);
             if (selected->targetId.has_value())
@@ -1447,11 +1612,30 @@ namespace autochess::game
                 selectedStream << L"\n目标：无";
             }
             selectedHud_.setString(selectedStream.str());
+            ui::placeTextAtTopLeft(selectedHud_, 880.0F, 245.0F);
         }
         else
         {
-            selectedHud_.setString(L"未选择己方单位");
+            selectedHud_.setString(L"");
         }
+    }
+
+    // 此函数在右侧信息区显示清晰的下一回合提示和三秒倒计时。
+    void MatchScreen::refreshSettlementCountdown()
+    {
+        if (view_.phase != core::MatchPhase::RoundSettlement)
+        {
+            settlementHud_.setString(L"");
+            return;
+        }
+
+        const std::uint64_t secondsRemaining =
+            (settlementFramesRemaining_ + 59U) / 60U;
+        std::wostringstream stream;
+        stream << L"正在进入下一回合\n倒计时  "
+               << secondsRemaining << L" 秒";
+        settlementHud_.setString(stream.str());
+        ui::placeTextAtTopLeft(settlementHud_, 880.0F, 285.0F);
     }
 
     // 此函数绘制目标连线和所有仍在战场上的实时单位。
@@ -1491,8 +1675,8 @@ namespace autochess::game
                 boardTransform_.battlePositionToPixel(unit.position);
             line[1].position =
                 boardTransform_.battlePositionToPixel(targetUnit->position);
-            line[0].color = sf::Color(235, 235, 220, 155);
-            line[1].color = sf::Color(235, 235, 220, 155);
+            line[0].color = ui::withAlpha(ui::TextSecondary, 135);
+            line[1].color = ui::withAlpha(ui::TextSecondary, 135);
             target.draw(line);
         }
 
@@ -1521,7 +1705,7 @@ namespace autochess::game
                 boardTransform_.battlePositionToPixel(unit.position);
             UnitRenderer::drawBattle(
                 target,
-                font_,
+                englishFont_,
                 unit,
                 center,
                 radius,
@@ -1607,9 +1791,9 @@ namespace autochess::game
             sf::RectangleShape slotShape(
                 sf::Vector2f(bounds.width, bounds.height));
             slotShape.setPosition(bounds.left, bounds.top);
-            slotShape.setFillColor(sf::Color(42, 47, 60));
-            slotShape.setOutlineThickness(2.0F);
-            slotShape.setOutlineColor(sf::Color(105, 115, 140));
+            slotShape.setFillColor(ui::Panel);
+            slotShape.setOutlineThickness(1.0F);
+            slotShape.setOutlineColor(ui::BorderStrong);
             target.draw(slotShape);
 
             if (!player.reserveSlots[slot].has_value()
@@ -1624,6 +1808,7 @@ namespace autochess::game
                 UnitRenderer::draw(
                     target,
                     font_,
+                    englishFont_,
                     unitName(unit->identity.unitId),
                     unit->identity,
                     core::MapSide::A,
@@ -1666,6 +1851,7 @@ namespace autochess::game
                 UnitRenderer::draw(
                     target,
                     font_,
+                    englishFont_,
                     unitName(unit->identity.unitId),
                     unit->identity,
                     core::MapSide::A,
@@ -1702,6 +1888,7 @@ namespace autochess::game
             UnitRenderer::draw(
                 target,
                 font_,
+                englishFont_,
                 unitName(unit.identity.unitId),
                 unit.identity,
                 core::MapSide::B,
@@ -1742,6 +1929,7 @@ namespace autochess::game
                 UnitRenderer::draw(
                     target,
                     font_,
+                    englishFont_,
                     unitName(unit->identity.unitId),
                     unit->identity,
                     core::MapSide::A,
@@ -1759,22 +1947,17 @@ namespace autochess::game
         zone.setPosition(bounds.left, bounds.top);
         zone.setFillColor(
             drag_.active
-                ? sf::Color(115, 45, 50)
-                : sf::Color(75, 42, 48));
-        zone.setOutlineThickness(2.0F);
-        zone.setOutlineColor(sf::Color(210, 85, 90));
+                ? ui::Enemy
+                : ui::withAlpha(ui::Enemy, 150));
+        zone.setOutlineThickness(1.0F);
+        zone.setOutlineColor(ui::EnemyStrong);
         target.draw(zone);
 
         // 此代码块把出售提示精确居中到投放区域。
-        sf::Text label(L"出售区（拖入出售）", font_, 20);
-        label.setFillColor(sf::Color(250, 210, 210));
-        const sf::FloatRect textBounds = label.getLocalBounds();
-        label.setOrigin(
-            textBounds.left + textBounds.width / 2.0F,
-            textBounds.top + textBounds.height / 2.0F);
-        label.setPosition(
-            bounds.left + bounds.width / 2.0F,
-            bounds.top + bounds.height / 2.0F);
+        sf::Text label(L"出售区（拖入出售）", font_);
+        ui::setTextSize(label, 20);
+        label.setFillColor(ui::TextPrimary);
+        ui::centerText(label, bounds);
         target.draw(label);
     }
 
@@ -1786,8 +1969,8 @@ namespace autochess::game
         message_.setString(text);
         message_.setFillColor(
             success
-                ? sf::Color(100, 215, 135)
-                : sf::Color(240, 105, 105));
+                ? ui::Success
+                : ui::Error);
         messageClock_.restart();
     }
 

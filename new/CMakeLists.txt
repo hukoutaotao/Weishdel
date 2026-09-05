@@ -205,6 +205,7 @@ set(AUTOCHESS_GAME_SOURCES
     src/game/screens/MatchScreen.hpp
     src/game/ui/Button.cpp
     src/game/ui/Button.hpp
+    src/game/ui/UiTheme.hpp
     src/game/ui/UiAction.hpp
     src/game/main.cpp
 )

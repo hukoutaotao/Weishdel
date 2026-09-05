@@ -27,6 +27,8 @@ namespace autochess::game
     public:
         MatchScreen(
             const sf::Font& font,
+            const sf::Font& englishFont,
+            const sf::Font& guardFont,
             const core::ConfigBundle& config,
             std::filesystem::path dataDirectory);
 
@@ -46,11 +48,15 @@ namespace autochess::game
         // 此函数同步应用层暂停状态并阻止底层战斗控件响应。
         void setPaused(bool paused) noexcept;
 
+        // 此函数同步应用层结算停留时间并刷新下一回合倒计时。
+        void setSettlementCountdown(std::uint64_t framesRemaining);
+
     private:
         struct Choice
         {
             std::unique_ptr<Button> button;
             std::string id;
+            sf::String displayName;
             core::AiStrategyKind strategy = core::AiStrategyKind::Unknown;
         };
 
@@ -98,6 +104,9 @@ namespace autochess::game
         // 此函数把一个选择项转换为当前阶段对应的 A 方命令。
         void submitChoice(const Choice& choice);
 
+        // 此函数在分队选择页把当前悬停分队的完整效果显示在空白区域。
+        void refreshChoiceHover();
+
         // 此函数根据最新快照同步 HUD、页签和准备按钮状态。
         void refreshPreparationWidgets();
 
@@ -135,6 +144,9 @@ namespace autochess::game
         // 此函数根据战斗快照同步 HUD 和选中单位状态。
         void refreshCombatWidgets();
 
+        // 此函数刷新回合结算页的下一回合提示与倒计时。
+        void refreshSettlementCountdown();
+
         // 此函数在连续战斗坐标上命中离鼠标最近的己方单位。
         core::BattleUnitId hitTestBattleUnit(sf::Vector2f pixel) const noexcept;
 
@@ -157,25 +169,27 @@ namespace autochess::game
         void showLocalMessage(const sf::String& text, bool success);
 
         const sf::Font& font_;
+        const sf::Font& englishFont_;
+        const sf::Font& guardFont_;
         const core::ConfigBundle& config_;
         core::ReadOnlyGameView view_;
         core::MatchPhase builtPhase_ = core::MatchPhase::MatchResult;
         sf::Text title_;
         sf::Text hint_;
         sf::Text hud_;
+        sf::Text timerHud_;
+        sf::Text hoverInfo_;
         sf::Text reserveTitle_;
         sf::Text message_;
         std::vector<Choice> choices_;
         std::vector<ShopCard> shopCards_;
         std::vector<ReviveCard> reviveCards_;
         BoardTransform boardTransform_;
-        std::unique_ptr<Button> routeToggleButton_;
-        std::unique_ptr<Button> shopTabButton_;
-        std::unique_ptr<Button> deathTabButton_;
+        std::unique_ptr<Button> purchaseTabButton_;
+        std::unique_ptr<Button> reviveTabButton_;
         std::unique_ptr<Button> refreshButton_;
         std::unique_ptr<Button> startButton_;
-        bool showRoutes_ = false;
-        bool showDeathList_ = false;
+        bool showReviveList_ = false;
         sf::Clock messageClock_;
         DragState drag_;
         // 此字段只保存拖拽期间当前可预览的己方空部署格。
@@ -189,7 +203,10 @@ namespace autochess::game
         std::unique_ptr<Button> playAgainButton_;
         std::unique_ptr<Button> resultMenuButton_;
         sf::Text combatHud_;
+        sf::Text guardHud_;
+        sf::Text settlementHud_;
         sf::Text selectedHud_;
+        std::uint64_t settlementFramesRemaining_ = 0;
         core::BattleUnitId selectedBattleUnitId_ = core::InvalidBattleUnitId;
         SpineAssetRepository animationRepository_;
         std::unordered_map<AnimationUnitKey, std::unique_ptr<UnitAnimationInstance>, AnimationUnitKeyHash> animations_;

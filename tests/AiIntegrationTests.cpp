@@ -16,7 +16,7 @@ namespace
 
     constexpr std::uint64_t MaxScenarioFrames = 1000;
 
-    // 此运行器逐项输出十八组矩阵结果并累计失败数量。
+    // 此运行器逐项输出三十六组矩阵结果并累计失败数量。
     class AiIntegrationRunner
     {
     public:
@@ -208,7 +208,7 @@ namespace
     }
 }
 
-// 此函数运行并验收全部十八个 AI 对局组合。
+// 此函数运行并验收全部三十六个 AI 对局组合。
 int runAiIntegrationTests()
 {
     AiIntegrationRunner runner;
@@ -229,13 +229,14 @@ int runAiIntegrationTests()
         AiStrategyKind::Offensive,
         AiStrategyKind::Defensive,
         AiStrategyKind::Route};
-    const std::array<std::string, 2> maps = {"map_01", "map_02"};
+    const std::array<std::string, 4> maps = {
+        "map_01", "map_02", "map_03", "map_04"};
     const std::array<std::string, 3> factions = {
         "training_team",
         "assault_team",
         "route_team"};
 
-    // 此代码块按策略、地图、分队顺序稳定运行三乘二乘三矩阵。
+    // 此代码块按策略、地图、分队顺序稳定运行三乘四乘三矩阵。
     std::size_t scenarioCount = 0;
     for (const AiStrategyKind strategy : strategies)
     {
@@ -271,7 +272,7 @@ int runAiIntegrationTests()
 
     // 此断言保证循环边界没有遗漏或重复之外的组合数量。
     runner.check(
-        scenarioCount == 18,
-        "AI integration matrix executes exactly eighteen scenarios");
+        scenarioCount == 36,
+        "AI integration matrix executes exactly thirty-six scenarios");
     return runner.failureCount();
 }

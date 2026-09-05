@@ -778,7 +778,7 @@ namespace
         auto viewA = match.viewFor(autochess::core::MapSide::A);
         runner.check(
             viewA.phase == autochess::core::MatchPhase::Preparation
-                && viewA.maps.size() == 2
+                && viewA.maps.size() == 4
                 && viewA.factions.size() == 3
                 && viewA.aiStrategies.size() == 3
                 && viewA.selectedMap.has_value()
@@ -5666,6 +5666,327 @@ namespace
                 << '\n';
         }
 
+        // 此代码段加载第三张正式地图并验收本次新增的布局约束。
+        autochess::core::MapDefinition symmetricMap;
+        autochess::core::ConfigError symmetricMapError;
+        const std::filesystem::path symmetricMapPath =
+            dataDirectory / "maps" / "map_03.map";
+        const bool symmetricMapLoaded = autochess::core::MapConfigLoader::load(
+            symmetricMapPath, symmetricMap, symmetricMapError);
+        if (!symmetricMapLoaded)
+        {
+            std::cerr
+                << autochess::core::formatConfigError(symmetricMapError)
+                << '\n';
+        }
+
+        int symmetricDeploymentACount = 0;
+        int symmetricDeploymentBCount = 0;
+        int symmetricRouteACount = 0;
+        int symmetricRouteBCount = 0;
+        autochess::core::GridPosition guardA;
+        autochess::core::GridPosition guardB;
+        bool hasGuardA = false;
+        bool hasGuardB = false;
+        bool rotationallySymmetric = symmetricMapLoaded;
+        bool deploymentsNearGuards = symmetricMapLoaded;
+        bool oneCellWideMiddleLanes = symmetricMapLoaded;
+        std::array<bool, 3> sideACrosses = {false, false, false};
+        std::array<bool, 3> sideBCrosses = {false, false, false};
+        const std::array<int, 3> laneRows = {2, 5, 8};
+
+        if (symmetricMapLoaded)
+        {
+            for (int y = 0; y < symmetricMap.height; ++y)
+            {
+                for (int x = 0; x < symmetricMap.width; ++x)
+                {
+                    const char tile = symmetricMap.gridRows[
+                        static_cast<std::size_t>(y)][static_cast<std::size_t>(x)];
+                    symmetricDeploymentACount += tile == 'A' ? 1 : 0;
+                    symmetricDeploymentBCount += tile == 'B' ? 1 : 0;
+                    if (tile == 'X')
+                    {
+                        guardA = {x, y};
+                        hasGuardA = true;
+                    }
+                    else if (tile == 'Y')
+                    {
+                        guardB = {x, y};
+                        hasGuardB = true;
+                    }
+
+                    char expectedMirror = tile;
+                    if (tile == 'A')
+                    {
+                        expectedMirror = 'B';
+                    }
+                    else if (tile == 'B')
+                    {
+                        expectedMirror = 'A';
+                    }
+                    else if (tile == 'X')
+                    {
+                        expectedMirror = 'Y';
+                    }
+                    else if (tile == 'Y')
+                    {
+                        expectedMirror = 'X';
+                    }
+                    const char mirroredTile = symmetricMap.gridRows[
+                        static_cast<std::size_t>(symmetricMap.height - 1 - y)]
+                        [static_cast<std::size_t>(symmetricMap.width - 1 - x)];
+                    rotationallySymmetric = rotationallySymmetric
+                        && mirroredTile == expectedMirror;
+                }
+            }
+
+            for (const autochess::core::Route& route : symmetricMap.routes)
+            {
+                symmetricRouteACount +=
+                    route.side == autochess::core::MapSide::A ? 1 : 0;
+                symmetricRouteBCount +=
+                    route.side == autochess::core::MapSide::B ? 1 : 0;
+                for (const autochess::core::GridPosition point : route.points)
+                {
+                    if (point.x != symmetricMap.width / 2)
+                    {
+                        continue;
+                    }
+                    for (std::size_t lane = 0; lane < laneRows.size(); ++lane)
+                    {
+                        if (point.y == laneRows[lane])
+                        {
+                            if (route.side == autochess::core::MapSide::A)
+                            {
+                                sideACrosses[lane] = true;
+                            }
+                            else if (route.side == autochess::core::MapSide::B)
+                            {
+                                sideBCrosses[lane] = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (const int laneY : laneRows)
+            {
+                for (int x = 6; x <= 12; ++x)
+                {
+                    oneCellWideMiddleLanes = oneCellWideMiddleLanes
+                        && symmetricMap.gridRows[static_cast<std::size_t>(laneY)]
+                            [static_cast<std::size_t>(x)] != '#'
+                        && symmetricMap.gridRows[static_cast<std::size_t>(laneY - 1)]
+                            [static_cast<std::size_t>(x)] == '#'
+                        && symmetricMap.gridRows[static_cast<std::size_t>(laneY + 1)]
+                            [static_cast<std::size_t>(x)] == '#';
+                }
+            }
+
+            if (hasGuardA && hasGuardB)
+            {
+                for (int y = 0; y < symmetricMap.height; ++y)
+                {
+                    for (int x = 0; x < symmetricMap.width; ++x)
+                    {
+                        const char tile = symmetricMap.gridRows[
+                            static_cast<std::size_t>(y)][static_cast<std::size_t>(x)];
+                        if (tile == 'A')
+                        {
+                            deploymentsNearGuards = deploymentsNearGuards
+                                && std::abs(x - guardA.x) + std::abs(y - guardA.y) <= 4;
+                        }
+                        else if (tile == 'B')
+                        {
+                            deploymentsNearGuards = deploymentsNearGuards
+                                && std::abs(x - guardB.x) + std::abs(y - guardB.y) <= 4;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                deploymentsNearGuards = false;
+            }
+        }
+
+        const bool threeDistinctRoads =
+            sideACrosses[0] && sideACrosses[1] && sideACrosses[2]
+            && sideBCrosses[0] && sideBCrosses[1] && sideBCrosses[2];
+        const bool symmetricMapValid = symmetricMapLoaded
+            && symmetricMap.id == "map_03"
+            && symmetricMap.name == "中心对称三路要塞"
+            && symmetricMap.width == 19
+            && symmetricMap.height == 11
+            && symmetricMap.width != symmetricMap.height
+            && rotationallySymmetric
+            && symmetricDeploymentACount == 6
+            && symmetricDeploymentBCount == 6
+            && deploymentsNearGuards
+            && symmetricMap.routes.size() == 12
+            && symmetricRouteACount == 6
+            && symmetricRouteBCount == 6
+            && threeDistinctRoads
+            && oneCellWideMiddleLanes;
+        runner.check(
+            symmetricMapValid,
+            "MapConfigLoader loads map_03 with three symmetric one-cell lanes");
+
+        // 此代码段加载 8x5 镜像绕行地图并核对手绘布局与路线原则。
+        autochess::core::MapDefinition detourMap;
+        autochess::core::ConfigError detourMapError;
+        const std::filesystem::path detourMapPath =
+            dataDirectory / "maps" / "map_04.map";
+        const bool detourMapLoaded = autochess::core::MapConfigLoader::load(
+            detourMapPath, detourMap, detourMapError);
+        if (!detourMapLoaded)
+        {
+            std::cerr
+                << autochess::core::formatConfigError(detourMapError)
+                << '\n';
+        }
+
+        int detourObstacleCount = 0;
+        int detourNonDeploymentCount = 0;
+        int detourDeploymentACount = 0;
+        int detourDeploymentBCount = 0;
+        int detourGuardACount = 0;
+        int detourGuardBCount = 0;
+        int detourRouteACount = 0;
+        int detourRouteBCount = 0;
+        std::size_t detourShortestRoute = 0;
+        std::size_t detourLongestRoute = 0;
+        bool verticallyMirrored = detourMapLoaded;
+        bool routesMirrored = detourMapLoaded;
+        bool followsDrawnBottomRoute = false;
+
+        if (detourMapLoaded)
+        {
+            for (int y = 0; y < detourMap.height; ++y)
+            {
+                for (int x = 0; x < detourMap.width; ++x)
+                {
+                    const char tile = detourMap.gridRows[
+                        static_cast<std::size_t>(y)][static_cast<std::size_t>(x)];
+                    detourObstacleCount += tile == '#' ? 1 : 0;
+                    detourNonDeploymentCount += tile == '.' ? 1 : 0;
+                    detourDeploymentACount += tile == 'A' ? 1 : 0;
+                    detourDeploymentBCount += tile == 'B' ? 1 : 0;
+                    detourGuardACount += tile == 'X' ? 1 : 0;
+                    detourGuardBCount += tile == 'Y' ? 1 : 0;
+
+                    char expectedMirror = tile;
+                    if (tile == 'A')
+                    {
+                        expectedMirror = 'B';
+                    }
+                    else if (tile == 'B')
+                    {
+                        expectedMirror = 'A';
+                    }
+                    else if (tile == 'X')
+                    {
+                        expectedMirror = 'Y';
+                    }
+                    else if (tile == 'Y')
+                    {
+                        expectedMirror = 'X';
+                    }
+                    verticallyMirrored = verticallyMirrored
+                        && detourMap.gridRows[static_cast<std::size_t>(y)]
+                            [static_cast<std::size_t>(detourMap.width - 1 - x)]
+                            == expectedMirror;
+                }
+            }
+
+            if (!detourMap.routes.empty())
+            {
+                detourShortestRoute = detourMap.routes.front().points.size();
+                detourLongestRoute = detourShortestRoute;
+            }
+            for (const autochess::core::Route& route : detourMap.routes)
+            {
+                detourRouteACount +=
+                    route.side == autochess::core::MapSide::A ? 1 : 0;
+                detourRouteBCount +=
+                    route.side == autochess::core::MapSide::B ? 1 : 0;
+                detourShortestRoute = std::min(
+                    detourShortestRoute, route.points.size());
+                detourLongestRoute = std::max(
+                    detourLongestRoute, route.points.size());
+
+                if (route.id == "a_bottom_edge")
+                {
+                    followsDrawnBottomRoute = route.start
+                            == autochess::core::GridPosition{1, 4}
+                        && route.points == std::vector<autochess::core::GridPosition>{
+                            {1, 4}, {1, 3}, {2, 3}, {2, 2}, {2, 1},
+                            {3, 1}, {4, 1}, {5, 1}, {5, 2}, {5, 3},
+                            {6, 3}, {7, 3}, {7, 2}};
+                }
+
+                if (route.side != autochess::core::MapSide::A)
+                {
+                    continue;
+                }
+                const std::string mirroredId = "b_" + route.id.substr(2);
+                const auto mirroredRoute = std::find_if(
+                    detourMap.routes.begin(),
+                    detourMap.routes.end(),
+                    [&mirroredId](const autochess::core::Route& candidate)
+                    {
+                        return candidate.id == mirroredId;
+                    });
+                if (mirroredRoute == detourMap.routes.end()
+                    || mirroredRoute->points.size() != route.points.size())
+                {
+                    routesMirrored = false;
+                    continue;
+                }
+                for (std::size_t pointIndex = 0;
+                     pointIndex < route.points.size();
+                     ++pointIndex)
+                {
+                    routesMirrored = routesMirrored
+                        && mirroredRoute->points[pointIndex]
+                            == autochess::core::GridPosition{
+                                detourMap.width - 1 - route.points[pointIndex].x,
+                                route.points[pointIndex].y};
+                }
+            }
+        }
+
+        const bool detourMapValid = detourMapLoaded
+            && detourMap.id == "map_04"
+            && detourMap.name == "镜像绕行回廊"
+            && detourMap.width == 8
+            && detourMap.height == 5
+            && detourMap.gridRows
+                == std::vector<std::string>{
+                    "#A#..#B#",
+                    "AA....BB",
+                    "X#.##.#Y",
+                    "AA....BB",
+                    "#A#..#B#"}
+            && verticallyMirrored
+            && detourObstacleCount == 12
+            && detourNonDeploymentCount == 14
+            && detourDeploymentACount == 6
+            && detourDeploymentBCount == 6
+            && detourGuardACount == 1
+            && detourGuardBCount == 1
+            && detourMap.routes.size() == 12
+            && detourRouteACount == 6
+            && detourRouteBCount == 6
+            && detourShortestRoute == 12
+            && detourLongestRoute == 13
+            && routesMirrored
+            && followsDrawnBottomRoute;
+        runner.check(
+            detourMapValid,
+            "MapConfigLoader loads map_04 with mirrored detour routes");
+
         // 此代码段确认文件打开失败时不会覆盖调用方原有地图对象。
         runner.check(
             loadMapMustFailWithoutOverwrite(
@@ -5763,12 +6084,14 @@ namespace
             && bundle.units.size() == 5
             && bundle.factions.size() == 3
             && bundle.factionModifiers.size() == 6
-            && bundle.maps.size() == 2
+            && bundle.maps.size() == 4
             && bundle.maps[0].id == "map_01"
-            && bundle.maps[1].id == "map_02";
+            && bundle.maps[1].id == "map_02"
+            && bundle.maps[2].id == "map_03"
+            && bundle.maps[3].id == "map_04";
         runner.check(
             validBundle,
-            "ConfigBundleLoader loads all definitions and two maps in order");
+            "ConfigBundleLoader loads all definitions and four maps in order");
 
         // 此代码段打印整包定义数量供人工确认全部依赖均已加载。
         if (loaded)
@@ -7262,7 +7585,7 @@ int main()
 
     std::cout << "[PASS] AI strategy test suite\n";
 
-    // 此代码块运行第九天十八组真实对局集成矩阵并传播失败。
+    // 此代码块运行三十六组真实对局集成矩阵并传播失败。
     const int aiIntegrationFailures = runAiIntegrationTests();
     assert(aiIntegrationFailures == 0);
     if (aiIntegrationFailures != 0)

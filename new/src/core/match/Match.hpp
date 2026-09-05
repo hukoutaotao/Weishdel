@@ -72,6 +72,9 @@ namespace autochess::core
         // 此函数结算当前战斗并推进到下一回合或最终结果。
         bool settleCurrentRound();
 
+        // 此函数把本帧新增的守卫伤害立即且仅一次写入双方持久守卫值。
+        void applyPendingGuardDamage() noexcept;
+
         // 此函数根据配置重置准备阶段的固定帧倒计时。
         void resetPreparationCountdown() noexcept;
 
@@ -111,5 +114,7 @@ namespace autochess::core
         std::optional<RoundSummary> lastRound_;
         MatchResultSummary result_;
         std::unique_ptr<BattleSimulation> battle_;
+        int appliedGuardDamageToA_ = 0;
+        int appliedGuardDamageToB_ = 0;
     };
 }

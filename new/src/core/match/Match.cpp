@@ -485,6 +485,8 @@ namespace autochess::core
             std::move(units),
             *map,
             config_.gameConfig.combatTimeoutSeconds);
+        appliedGuardDamageToA_ = 0;
+        appliedGuardDamageToB_ = 0;
         preparationFramesRemaining_ = 0;
         phase_ = MatchPhase::Combat;
         return success("战斗开始");
@@ -525,6 +527,7 @@ namespace autochess::core
             {
                 battle_->step();
             }
+            applyPendingGuardDamage();
 
             // 此分支在战斗结束后切换到独立的回合结算阶段。
             if (battle_->isFinished())
@@ -542,6 +545,27 @@ namespace autochess::core
         }
 
         return false;
+    }
+
+    // 此函数按战斗摘要的累计值计算增量，保证每个到达守卫的单位只扣除一次。
+    void Match::applyPendingGuardDamage() noexcept
+    {
+        if (battle_ == nullptr)
+        {
+            return;
+        }
+
+        const BattleSummary& summary = battle_->summary();
+        const int damageToA = std::max(
+            0,
+            summary.guardDamageToA - appliedGuardDamageToA_);
+        const int damageToB = std::max(
+            0,
+            summary.guardDamageToB - appliedGuardDamageToB_);
+        playerA_.guardValue = std::max(0, playerA_.guardValue - damageToA);
+        playerB_.guardValue = std::max(0, playerB_.guardValue - damageToB);
+        appliedGuardDamageToA_ = summary.guardDamageToA;
+        appliedGuardDamageToB_ = summary.guardDamageToB;
     }
 
     // 此函数回写战斗结果并根据最终胜负决定下一阶段。
@@ -564,7 +588,8 @@ namespace autochess::core
             updatedPlayerB,
             battle_->summary(),
             currentRound_,
-            updatedRound);
+            updatedRound,
+            true);
         // 此分支在结算服务拒绝摘要时保留战斗和结算阶段供诊断。
         if (!settlement.success)
         {
