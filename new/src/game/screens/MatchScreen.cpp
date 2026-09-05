@@ -853,7 +853,7 @@ namespace autochess::game
         else if (view_.phase == core::MatchPhase::FactionSelection)
         {
             title_.setString(L"选择分队");
-            hint_.setString(L"分队会影响部署上限、价格和单位属性");
+            hint_.setString(L"分队会影响初始守卫、部署上限、价格和单位属性");
             ui::centerTextAtTop(title_, 640.0F, 80.0F);
             ui::centerTextAtTop(hint_, 640.0F, 150.0F);
             for (std::size_t index = 0; index < view_.factions.size(); ++index)
